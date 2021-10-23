@@ -64,7 +64,8 @@ INFERENCE = {
     'raw_dirs',
     'supp_dirs',
     'val_dirs',
-    'model',
+    'network',
+    'network_width',
     'weights',
     'save_output',
     'gpu_ids',
@@ -78,6 +79,7 @@ INFERENCE = {
     'num_pred_rnd',
     'seg_val_cat',
     'num_workers',
+    'normalization',
 }
 
 SEGMENTATION = {
@@ -114,6 +116,7 @@ TRAINING = {
     'supp_dirs',
     'weights_dirs',
     'network',
+    'network_width',
     'num_inputs',
     'num_hiddens',
     'num_residual_hiddens',
@@ -144,7 +147,9 @@ TRAINING = {
     'earlystop_metric',
     'model_name',
     'use_mask',
-    'normalization'
+    'normalization',
+    'loss',
+    'temperature'
 }
 
 

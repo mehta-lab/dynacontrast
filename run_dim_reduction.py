@@ -130,7 +130,7 @@ def zoom_axis(x, y, ax, zoom_cutoff=1):
     ax.set_xlim(left=xlim[0], right=xlim[1])
     ax.set_ylim(bottom=ylim[0], top=ylim[1])
 
-def fit_umap(train_data, weights_dir, labels, conditions, fraction=1, seed=0,
+def fit_umap(train_data, weights_dir, labels, conditions, fraction=0.1, seed=0,
              n_nbrs=(15, 50, 200), a_s=(1.58,), b_s=(0.9,)):
     """Fit UMAP model to latent vectors and save the reduced vectors (embeddings), output UMAP plot
     Args:
@@ -205,8 +205,8 @@ def fit_umap(train_data, weights_dir, labels, conditions, fraction=1, seed=0,
             ax[axis_count].set_xlabel('UMAP 1')
             ax[axis_count].set_ylabel('UMAP 2')
             axis_count += 1
-            fig.savefig(os.path.join(weights_dir, 'UMAP_HEK.png'),
-            # fig.savefig(os.path.join(weights_dir, 'UMAP_long.png'),
+            # fig.savefig(os.path.join(weights_dir, 'UMAP_HEK.png'),
+            fig.savefig(os.path.join(weights_dir, 'UMAP_4_cell_types_fc{}.png'.format(fraction)),
                         dpi=300, bbox_inches='tight')
     plt.close(fig)
 
@@ -259,16 +259,22 @@ def dim_reduction(input_dirs,
         conditions = [os.path.basename(input_dir) for input_dir in input_dirs]
     elif type(conditions) is not list:
         conditions = [conditions]
+    assert len(conditions) == len(input_dirs), '# of conditions has to be equal to # of input directories'
     if fit_model:
         vector_list = []
         labels = []
-        label = 0
-        for input_dir in input_dirs:
+        label = -1
+        condi_cur = None
+        for input_dir, condition in zip(input_dirs, conditions):
+            # only update label if current condition is different from previous
+            if not condition == condi_cur:
+                label += 1
+            condi_cur = condition
             vec = pickle.load(open(os.path.join(input_dir, fname), 'rb'))
             # vec = zscore(np.squeeze(vec)).astype(np.float32)
             vector_list.append(vec.reshape(vec.shape[0], -1))
             labels += [label] * vec.shape[0]
-            label += 1
+
         vectors = np.concatenate(vector_list, axis=0)
         labels = np.array(labels, dtype=np.int32)
         _ = fit_func(vectors, weights_dir, labels=labels, conditions=conditions)

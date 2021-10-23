@@ -385,10 +385,12 @@ def process_VAE(raw_folder: str,
     num_residual_hiddens = config_.training.num_residual_hiddens
     num_embeddings = config_.training.num_embeddings
     commitment_cost = config_.training.commitment_cost
-    network = config_.inference.model
+    network = config_.inference.network
+    network_width = config_.inference.network_width
     save_output = config_.inference.save_output
     batch_size = config_.inference.batch_size
     num_workers = config_.inference.num_workers
+    normalization = config_.inference.normalization
 
     assert len(channels) > 0, "At least one channel must be specified"
 
@@ -396,8 +398,8 @@ def process_VAE(raw_folder: str,
     model_dir = os.path.dirname(model_path)
     #TODO: add model_name to the config. Set the default to be the same as model folder name
     model_name = os.path.basename(model_dir)
-    # output_dir = os.path.join(summary_folder, model_name + '_pool_norm')
-    output_dir = os.path.join(raw_folder, model_name)
+    # output_dir = os.path.join(raw_folder, model_name)
+    output_dir = os.path.join(raw_folder, model_name + '_no_projhd')
     os.makedirs(output_dir, exist_ok=True)
 
     assert len(set(site[:2] for site in sites)) == 1, \
@@ -425,8 +427,15 @@ def process_VAE(raw_folder: str,
     print(f"\tloading static patches {os.path.join(raw_folder, '%s_static_patches.pkl' % well)}")
     dataset = pickle.load(open(os.path.join(raw_folder, '%s_static_patches.pkl' % well), 'rb'))
     dataset = dataset[:, channels, ...]
+    if normalization == 'dataset':
+        dataset = zscore(np.squeeze(dataset), channel_mean=channel_mean, channel_std=channel_std).astype(np.float32)
+        print('channel_mean:', channel_mean)
+    elif normalization == 'patch':
+        dataset = zscore_patch(np.squeeze(dataset)).astype(np.float32)
+    else:
+        raise ValueError('Parameter "normalization" must be "dataset" or "patch"')
     # dataset = zscore(np.squeeze(dataset), channel_mean=channel_mean, channel_std=channel_std)
-    dataset = zscore_patch(np.squeeze(dataset))
+    # dataset = zscore_patch(np.squeeze(dataset))
     dataset = TensorDataset(torch.from_numpy(dataset).float())
     assert len(dataset.tensors[0].shape) == 4, "dataset tensor dimension can only be 4, not {}".format(len(dataset.tensors[0].shape))
     _, n_channels, x_size, y_size = dataset.tensors[0].shape
@@ -499,7 +508,7 @@ def process_VAE(raw_folder: str,
                 plt.close(fig)
     elif 'ResNet' in network:
         network_cls = getattr(resnet, 'EncodeProject')
-        model = network_cls(arch=network, num_inputs=len(channels))
+        model = network_cls(arch=network, num_inputs=len(channels), width=network_width)
         model = model.to(device)
         # print(model)
         model.load_state_dict(torch.load(model_path, map_location=device))
@@ -515,7 +524,8 @@ def process_VAE(raw_folder: str,
             for b_idx, batch in enumerate(batch_pbar):
                 data, = batch
                 data = data.to(device)
-                code = model.encode(data, out='z').cpu().data.numpy().squeeze()
+                code = model.encode(data, out='h').cpu().data.numpy().squeeze()
+                # print(code.shape)
                 h_s.append(code)
         dats = np.concatenate(h_s, axis=0)
         print(f"\tsaving {os.path.join(output_dir, '%s_latent_space.pkl' % well)}")

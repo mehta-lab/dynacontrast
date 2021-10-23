@@ -16,7 +16,7 @@ from scipy.sparse import csr_matrix
 from HiddenStateExtractor.vae import CHANNEL_MAX
 from SingleCellPatch.extract_patches import im_adjust, cv2_fn_wrapper
 from pipeline.train_utils import EarlyStopping, TripletDataset, zscore, zscore_patch, apply_affine_transform
-from HiddenStateExtractor.losses import AllTripletMiner
+from HiddenStateExtractor.losses import AllTripletMiner, NTXent
 from HiddenStateExtractor.resnet import EncodeProject
 import HiddenStateExtractor.vae as vae
 
@@ -822,6 +822,7 @@ def main(config_):
 
     ### Settings ###
     network = config.training.network
+    network_width = config.training.network_width
     num_inputs = config.training.num_inputs
     num_hiddens = config.training.num_hiddens
     num_residual_hiddens = config.training.num_residual_hiddens
@@ -852,7 +853,8 @@ def main(config_):
     use_mask = config.training.use_mask
     channels = config.training.channels
     normalization = config.training.normalization
-
+    loss = config.training.loss
+    temperature = config.training.temperature
     device = t.device('cuda:%d' % gpu_id)
 
     # use data loader for training ResNet
@@ -943,6 +945,7 @@ def main(config_):
     else:
         train_set, train_labels, val_set, val_labels = \
             train_val_split(dataset, labels, val_split_ratio=val_split_ratio, seed=0)
+        # SimCLR uses n_pos_samples=2
         tri_train_set = TripletDataset(train_labels, lambda index: augment_img(train_set[index]), n_pos_samples)
         tri_val_set = TripletDataset(val_labels, lambda index: augment_img(val_set[index]), n_pos_samples)
         # Data Loader
@@ -958,11 +961,17 @@ def main(config_):
                                   num_workers=num_workers,
                                   pin_memory=False,
                                   )
-        tri_loss = AllTripletMiner(margin=margin).to(device)
+        if loss == 'triplet':
+            loss_fn = AllTripletMiner(margin=margin).to(device)
+        elif loss == 'ntxent':
+            loss_fn = NTXent(tau=temperature).to(device)
+        else:
+            raise ValueError('Loss name {} is not defined.'.format(loss))
+
         # tri_loss = HardNegativeTripletMiner(margin=margin).to(device)
         ## Initialize Model ###
 
-        model = EncodeProject(arch=network, loss=tri_loss, num_inputs=num_inputs, width=1).to(device)
+        model = EncodeProject(arch=network, loss=loss_fn, num_inputs=num_inputs, width=network_width).to(device)
 
         if start_model_path:
             print('Initialize the model with state {} ...'.format(start_model_path))
