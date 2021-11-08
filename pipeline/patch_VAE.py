@@ -10,7 +10,8 @@ import inspect
 from configs.config_reader import YamlReader
 from torch.utils.data import TensorDataset, DataLoader
 from tqdm import tqdm
-from SingleCellPatch.extract_patches import process_site_extract_patches, im_adjust
+from SingleCellPatch.extract_patches import process_site_extract_patches
+from SingleCellPatch.patch_utils import im_adjust
 from SingleCellPatch.generate_trajectories import process_site_build_trajectory, process_well_generate_trajectory_relations
 
 from pipeline.train_utils import zscore, zscore_patch, ImageDataset
@@ -378,7 +379,7 @@ def process_VAE(raw_folder: str,
     # For inference same normalization parameters can be used or determined from the inference data,
     # depending on if the inference data has the same distribution as training data
 
-    model_path = config_.inference.weights
+    model_dir = config_.inference.weights
     # weights_dir = config_.files.weights_dir
     channels = config_.inference.channels
     num_hiddens = config_.training.num_hiddens
@@ -394,8 +395,6 @@ def process_VAE(raw_folder: str,
 
     assert len(channels) > 0, "At least one channel must be specified"
 
-    # these sites should be from a single condition (C5, C4, B-wells, etc..)
-    model_dir = os.path.dirname(model_path)
     #TODO: add model_name to the config. Set the default to be the same as model folder name
     model_name = os.path.basename(model_dir)
     # output_dir = os.path.join(raw_folder, model_name)
@@ -451,14 +450,7 @@ def process_VAE(raw_folder: str,
                             gpu=True)
 
         model = model.to(device)
-        try:
-            if not model_path is None:
-                model.load_state_dict(torch.load(model_path))
-            else:
-                model.load_state_dict(torch.load('HiddenStateExtractor/save_0005_bkp4.pt'))
-        except Exception as ex:
-            print(ex)
-            raise ValueError("Error in loading model weights for VQ-VAE")
+        model.load_state_dict(torch.load(os.path.join(model_dir, 'model.pt')))
 
         z_bs = []
         z_as = []
@@ -511,7 +503,7 @@ def process_VAE(raw_folder: str,
         model = network_cls(arch=network, num_inputs=len(channels), width=network_width)
         model = model.to(device)
         # print(model)
-        model.load_state_dict(torch.load(model_path, map_location=device))
+        model.load_state_dict(torch.load(os.path.join(model_dir, 'model.pt'), map_location=device))
         model.eval()
         data_loader = DataLoader(dataset=dataset,
                                   batch_size=batch_size,

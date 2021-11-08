@@ -1,7 +1,7 @@
 # bchhun, {2020-02-21}
 
 from pipeline.patch_VAE import extract_patches, build_trajectories
-from SingleCellPatch.extract_patches import get_im_sites
+from SingleCellPatch.patch_utils import get_im_sites
 from multiprocessing import Pool, Queue, Process
 import os
 import numpy as np

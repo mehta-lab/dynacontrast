@@ -80,6 +80,7 @@ INFERENCE = {
     'seg_val_cat',
     'num_workers',
     'normalization',
+    'model',
 }
 
 SEGMENTATION = {

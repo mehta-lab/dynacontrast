@@ -11,88 +11,14 @@ import numpy as np
 import os
 import pickle
 import matplotlib
-import natsort
 import pandas as pd
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 from scipy.signal import convolve2d
-from .instance_clustering import within_range, check_segmentation_dim
+from .patch_utils import within_range, check_segmentation_dim, cv2_fn_wrapper, select_window, im_adjust, \
+    get_cell_rect_angle
 
 """ Functions for extracting single cells from static frames """
-
-def cv2_fn_wrapper(cv2_fn, mat, *args, **kwargs):
-    """" A wrapper for cv2 functions
-
-    Data in channel first format are adjusted to channel last format for
-    cv2 functions
-    """
-
-    mat_shape = mat.shape
-    x_size = mat_shape[-2]
-    y_size = mat_shape[-1]
-    _mat = mat.reshape((-1, x_size, y_size)).transpose((1, 2, 0))
-    _output = cv2_fn(_mat, *args, **kwargs)
-    _x_size = _output.shape[0]
-    _y_size = _output.shape[1]
-    output_shape = tuple(list(mat_shape[:-2]) + [_x_size, _y_size])
-    output = _output.transpose((2, 0, 1)).reshape(output_shape)
-    return output
-
-
-def select_window(img, window, padding=0., skip_boundary=False):
-    """ Extract image patch
-
-    Patch of `window` will be extracted from `img`,
-    negative boundaries are allowed (padded)
-    
-    Args:
-        img (np.array): target image, size should be (c, z(1), x(2048), y(2048))
-            TODO: size is hardcoded now
-        window (tuple): area-of-interest for the patch, ((int, int), (int, int))
-            in the form of ((x_low, x_up), (y_low, y_up))
-        padding (float, optional): padding value for negative boundaries
-        skip_boundary (bool, optional): if to skip patches whose edges exceed
-            the image size (do not pad)
-
-    Returns:
-        np.array: patch-of-interest
-    
-    """
-    if len(img.shape) == 4:
-        n_channels, n_z, x_full_size, y_full_size = img.shape
-    elif len(img.shape) == 3:
-        n_channels, x_full_size, y_full_size = img.shape
-        # add a z axis
-        # img = np.expand_dims(img, 1)
-    else:
-        raise NotImplementedError("window must be extracted from raw data of 3 or 4 dims")
-    # print(f"\nwindow selection, img.shape = {img.shape}\twindow.shape = {window}")
-
-    if skip_boundary and ((window[0][0] < 0) or
-                          (window[1][0] < 0) or
-                          (window[0][1] > x_full_size) or
-                          (window[1][1] > y_full_size)):
-        return None
-
-    if window[0][0] < 0:
-        output_img = np.concatenate([padding * np.ones_like(img[..., window[0][0]:, :]),
-                                     img[..., :window[0][1], :]], 1)
-    elif window[0][1] > x_full_size:
-        output_img = np.concatenate([img[..., window[0][0]:, :],
-                                     padding * np.ones_like(img[..., :(window[0][1] - x_full_size), :])], 1)
-    else:
-        output_img = img[..., window[0][0]:window[0][1], :]
-
-    if window[1][0] < 0:
-        output_img = np.concatenate([padding * np.ones_like(output_img[..., window[1][0]:]),
-                                     output_img[..., :window[1][1]]], 2)
-    elif window[1][1] > y_full_size:
-        output_img = np.concatenate([output_img[..., window[1][0]:],
-                                     padding * np.ones_like(output_img[..., :(window[1][1] - y_full_size)])], 2)
-    else:
-        output_img = output_img[..., window[1][0]:window[1][1]]
-    return output_img
-
 
 # filter 1 is for the masking of surrounding cells
 size1 = 11
@@ -224,7 +150,7 @@ def process_site_extract_patches(site_path,
             print('Writing timepoint {} z {}'.format(t_point, z))
             raw_image = image_stack[t_point, :, z, ...]
             cell_segmentation = segmentation_stack[t_point, :, z, ...]
-            cell_segmentation = check_segmentation_dim(cell_segmentation)
+            # cell_segmentation = check_segmentation_dim(cell_segmentation)
             positions, positions_labels = cell_pixel_assignments[t_point][z]
             all_cells = cell_positions[t_point][z]
 
@@ -324,65 +250,6 @@ def save_single_cell_im(output_mat,
         axis_count += 1
     fig.savefig(im_path, dpi=300, bbox_inches='tight')
     plt.close(fig)
-
-
-def im_bit_convert(im, bit=16, norm=False, limit=[]):
-    im = im.astype(np.float32, copy=False) # convert to float32 without making a copy to save memory
-    if norm:
-        if not limit:
-            limit = [np.nanmin(im[:]), np.nanmax(im[:])] # scale each image individually based on its min and max
-        im = (im-limit[0])/(limit[1]-limit[0])*(2**bit-1)
-    im = np.clip(im, 0, 2**bit-1) # clip the values to avoid wrap-around by np.astype
-    if bit==8:
-        im = im.astype(np.uint8, copy=False) # convert to 8 bit
-    else:
-        im = im.astype(np.uint16, copy=False) # convert to 16 bit
-    return im
-
-
-def im_adjust(img, tol=1, bit=8):
-    """
-    Adjust contrast of the image
-    """
-    limit = np.percentile(img, [tol, 100 - tol])
-    im_adjusted = im_bit_convert(img, bit=bit, norm=True, limit=limit.tolist())
-    return im_adjusted
-
-
-def get_im_sites(input_dir):
-    """
-    Get sites (FOV names) from numpy files in the input directory
-    Args:
-        input_dir (str): input directory
-
-    Returns:
-        sites (list): sites (FOV names)
-
-    """
-    img_names = [file for file in os.listdir(input_dir) if (file.endswith(".npy")) & ('_NN' not in file)]
-    sites = [os.path.splitext(img_name)[0] for img_name in img_names]
-    sites = natsort.natsorted(list(set(sites)))
-    return sites
-
-
-def get_cell_rect_angle(tm):
-    """ Calculate the rotation angle for long axis alignment
-
-    Args:
-        tm (np.array): target mask
-
-    Returns:
-        float: long axis angle
-
-    """
-    _, contours, _ = cv2.findContours(tm.astype('uint8'), 1, 2)
-    areas = [cv2.contourArea(cnt) for cnt in contours]
-    rect = cv2.minAreaRect(contours[np.argmax(areas)])
-    w, h = rect[1]
-    ang = rect[2]
-    if w < h:
-        ang = ang - 90
-    return ang
 
 
 def process_site_extract_patches_align_axis(site_path,

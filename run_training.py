@@ -6,15 +6,16 @@ import argparse
 import torch as t
 import torch.nn as nn
 import pickle
+import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 # from torchvision import transforms
 from scipy.sparse import csr_matrix
-
+from sklearn.model_selection import train_test_split
 from HiddenStateExtractor.vae import CHANNEL_MAX
-from SingleCellPatch.extract_patches import im_adjust, cv2_fn_wrapper
+from SingleCellPatch.patch_utils import cv2_fn_wrapper, im_adjust
 from pipeline.train_utils import EarlyStopping, TripletDataset, zscore, zscore_patch, apply_affine_transform
 from HiddenStateExtractor.losses import AllTripletMiner, NTXent
 from HiddenStateExtractor.resnet import EncodeProject
@@ -453,7 +454,7 @@ def train_val_split(dataset, labels, val_split_ratio=0.15, seed=0):
     Args:
         dataset (TensorDataset): dataset of training inputs
         labels (list or np array): labels corresponding to inputs
-        val_split_ratio (float or None): fraction of the dataset used for validation
+        val_split_ratio (float): fraction of the dataset used for validation
         seed (int): seed controlling random split of the dataset
 
     Returns:
@@ -463,7 +464,7 @@ def train_val_split(dataset, labels, val_split_ratio=0.15, seed=0):
         val_labels (list or np array): validation labels corresponding to inputs in train set
 
     """
-    assert val_split_ratio is None or 0 < val_split_ratio < 1
+    assert 0 < val_split_ratio < 1
     n_samples = len(dataset)
     # Declare sample indices and do an initial shuffle
     sample_ids = list(range(n_samples))
@@ -481,6 +482,41 @@ def train_val_split(dataset, labels, val_split_ratio=0.15, seed=0):
     val_labels = labels[val_ids]
     return train_set, train_labels, val_set, val_labels
 
+def train_val_split_by_col(dataset, labels, df_meta, split_cols=('data_dir', 'FOV'), val_split_ratio=0.15, seed=0):
+    """Split the dataset into train and validation sets
+
+    Args:
+        dataset (TensorDataset): dataset of training inputs
+        labels (list or np array): labels corresponding to inputs
+        val_split_ratio (float): fraction of the dataset used for validation
+        seed (int): seed controlling random split of the dataset
+
+    Returns:
+        train_set (TensorDataset): train set
+        train_labels (list or np array): train labels corresponding to inputs in train set
+        val_set (TensorDataset): validation set
+        val_labels (list or np array): validation labels corresponding to inputs in train set
+
+    """
+    assert 0 < val_split_ratio < 1
+    train_set, train_labels, val_set, val_labels, df_train, df_val = \
+        train_test_split(dataset, labels, df_meta, test_size=val_split_ratio, random_state=seed, stratify=df_meta[split_cols])
+    # n_samples = len(dataset)
+    # # Declare sample indices and do an initial shuffle
+    # sample_ids = list(range(n_samples))
+    # np.random.seed(seed)
+    # np.random.shuffle(sample_ids)
+    # split = int(np.floor(val_split_ratio * n_samples))
+    # # randomly choose the split start
+    # np.random.seed(seed)
+    # split_start = np.random.randint(0, n_samples - split)
+    # val_ids = sample_ids[split_start: split_start + split]
+    # train_ids = sample_ids[:split_start] + sample_ids[split_start + split:]
+    # train_set = dataset[train_ids]
+    # train_labels = labels[train_ids]
+    # val_set = dataset[val_ids]
+    # val_labels = labels[val_ids]
+    return train_set, train_labels, val_set, val_labels
 
 def train(model, dataset, output_dir, relation_mat=None, mask=None,
           n_epochs=10, lr=0.001, batch_size=16, device='cuda:0', shuffle_data=False,
@@ -869,6 +905,7 @@ def main(config_):
     labels = []
     id_offsets = [0]
     ### Load Data ###
+    df_meta_all = []
     for supp_dir, train_dir, raw_dir in dir_sets:
         os.makedirs(train_dir, exist_ok=True)
         print(f"\tloading static patches {os.path.join(raw_dir, 'im_static_patches.pkl')}")
@@ -884,6 +921,12 @@ def main(config_):
         print('len(label):', len(label))
         print('len(dataset):', len(dataset))
         relations.append(relation)
+        meta_path = os.path.join(supp_dir, 'im-supps', 'patch_meta.csv')
+        df_meta = pd.read_csv(meta_path, index_col=0, converters={
+            'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
+        df_meta['data_dir'] = os.path.dirname(raw_dir)
+        df_meta_all.append(df_meta)
+
         # TODO: handle non-singular z-dimension case earlier in the pipeline
         if normalization == 'dataset':
             dataset = zscore(np.squeeze(dataset), channel_mean=channel_mean, channel_std=channel_std).astype(np.float32)
@@ -897,6 +940,8 @@ def main(config_):
         if use_mask:
             mask = pickle.load(open(os.path.join(raw_dir, 'im_static_patches_mask.pkl'), 'rb'))
             masks.append(mask)
+    df_meta_all = pd.concat(df_meta_all, axis=0)
+    df_meta_all.reset_index(drop=True, inplace=True)
     id_offsets = id_offsets[:-1]
     dataset = np.concatenate(datasets, axis=0)
     if use_mask:

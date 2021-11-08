@@ -1,7 +1,7 @@
 # bchhun, {2020-02-21}
 
 from pipeline.segmentation import segmentation, instance_segmentation
-from SingleCellPatch.extract_patches import get_im_sites
+from SingleCellPatch.patch_utils import get_im_sites
 from pipeline.segmentation_validation import segmentation_validation_michael
 from multiprocessing import Process
 import os
