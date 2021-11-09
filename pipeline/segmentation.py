@@ -74,9 +74,9 @@ def segmentation(raw_folder_: str,
     for site in sites:
         site_path = os.path.join(raw_folder_, '%s.npy' % site)
         if not os.path.exists(site_path):
-            log.info("Site not found %s" % site_path)
+            log.info("Site not found %s" % site_path, flush=True)
         else:
-            log.info("Predicting %s" % site_path)
+            log.info("Predicting %s" % site_path, flush=True)
             try:
                 # Generate semantic segmentation
                 predict_whole_map(site_path,
@@ -87,7 +87,7 @@ def segmentation(raw_folder_: str,
                                   **kwargs)
             except Exception as ex:
                 log.error(ex)
-                log.error("Error in predicting site %s" % site)
+                log.error("Error in predicting site %s" % site, flush=True)
     return
 
 

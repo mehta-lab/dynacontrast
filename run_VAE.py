@@ -67,24 +67,12 @@ def main(method_, raw_dir_, supp_dir_, config_):
 
     wells = set(s[:2] for s in sites)
     mp.set_start_method('spawn', force=True)
-    # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    # os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in gpu_ids])
-    # print("CUDA_VISIBLE_DEVICES=" + os.environ["CUDA_VISIBLE_DEVICES"])
     for i, well in enumerate(wells):
         well_sites = [s for s in sites if s[:2] == well]
         args = (inputs, outputs, well_sites, config_)
         p = Worker(args, gpuid=gpu_ids[0], method=method)
         p.start()
         p.join()
-
-        # for weight in weights:
-        #     print('Encoding using model {}'.format(weight))
-        #     well_sites = [s for s in sites if s[:2] == well]
-        #     args = (inputs, outputs, channels, weight, well_sites, network)
-        #     p = Worker(args, gpuid=gpu, method=method)
-        #     p.start()
-        #     p.join()
-
 
 def parse_args():
     """

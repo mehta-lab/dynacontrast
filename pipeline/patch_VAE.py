@@ -395,16 +395,11 @@ def process_VAE(raw_folder: str,
 
     assert len(channels) > 0, "At least one channel must be specified"
 
-    #TODO: add model_name to the config. Set the default to be the same as model folder name
     model_name = os.path.basename(model_dir)
     # output_dir = os.path.join(raw_folder, model_name)
     output_dir = os.path.join(raw_folder, model_name + '_no_projhd')
     os.makedirs(output_dir, exist_ok=True)
 
-    assert len(set(site[:2] for site in sites)) == 1, \
-        "Sites should be from a single well/condition"
-    well = sites[0][:2]
-    # TODO: expose normalization parameters in train config
     #### cardiomyocyte data###
     # channel_mean = [0.49998672, 0.007081]
     # channel_std = [0.00074311, 0.00906428]
@@ -413,16 +408,12 @@ def process_VAE(raw_folder: str,
     # channel_mean = [0.4, 0, 0.5]
     # channel_std = [0.05, 0.05, 0.05]
 
-    ###
-    # channel_mean = [32778.97446252,   681.61666079]
-    # channel_std = [1314.90374187,  688.80291129]
-
     ### estimate mean and std from the data ###
     channel_mean = config_.inference.channel_mean
     channel_std = config_.inference.channel_std
     # channel_mean = None
     # channel_std = None
-
+    well = sites[0][:2]
     print(f"\tloading static patches {os.path.join(raw_folder, '%s_static_patches.pkl' % well)}")
     dataset = pickle.load(open(os.path.join(raw_folder, '%s_static_patches.pkl' % well), 'rb'))
     dataset = dataset[:, channels, ...]
