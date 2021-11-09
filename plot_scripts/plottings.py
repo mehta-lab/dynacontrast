@@ -15,7 +15,8 @@ import h5py
 import pandas as pd
 from NNsegmentation.models import Segment
 from NNsegmentation.data import predict_whole_map
-from SingleCellPatch.instance_clustering import instance_clustering, within_range
+from SingleCellPatch.instance_clustering import instance_clustering
+from SingleCellPatch.patch_utils import within_range
 from SingleCellPatch.generate_trajectories import frame_matching
 import matplotlib
 from matplotlib import cm

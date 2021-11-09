@@ -1,8 +1,9 @@
+import numpy as np
 import torch.nn as nn
 import torch
-
+import torch.nn.functional as F
 from typing import Tuple
-
+torch.autograd.set_detect_anomaly(True)
 
 class TripletMiner(nn.Module):
     """Triplet Miner
@@ -103,7 +104,6 @@ class AllTripletMiner(TripletMiner):
         mask: torch.Tensor
               Mask for every valid triplet from the selected samples.
         """
-        # eye          = torch.eye( ids.size( 0 ), requires_grad = False ).cuda( ) if ids.is_cuda else \
         eye = torch.eye(ids.size(0), requires_grad=False).to(ids.device)
 
         ids_not_eq = (1 - eye).bool()
@@ -261,3 +261,81 @@ class HardNegativeTripletMiner(TripletMiner):
         loss = torch.clamp(pos_dist - neg_dist + self.margin, min=0.)
         loss = loss.mean()
         return loss, None
+
+
+class NTXent(nn.Module):
+    """AllTripletMiner
+    The class provides mining for all valid triplet from a given dataset.
+    Attributes
+    ----------
+    margin: int
+            Margin distance between positive and negative samples from anchor
+            perspective. Default to 0.5.
+    """
+    LARGE_NUMBER = 1e16
+    def __init__(self, tau=1) -> None:
+        """Init
+        Params
+        ------
+        margin: int
+                Margin distance between positive and negative samples from anchor
+                perspective. Default to 0.5.
+        """
+        super().__init__()
+        self.tau = tau
+
+    def _valid_pair_mask(self, ids: torch.Tensor) -> torch.Tensor:
+        """TripletMask
+        Parameters
+        ----------
+        ids: torch.Tensor
+             Labels of samples from the dataset respectively to the
+             embeddings.
+        Returns
+        -------
+        mask: torch.Tensor
+              Mask for every valid triplet from the selected samples.
+        """
+        n = ids.size(0)
+        eye = torch.eye(n, requires_grad=False).to(ids.device)
+        i_not_eq_k = (1 - eye).bool()
+        ij_valid = ids.unsqueeze(0) == ids.unsqueeze(1)
+        # valid i,j pair has to exlude the diagonal terms
+        mask = (i_not_eq_k & ij_valid)
+        return mask
+
+
+    def forward(
+            self,
+            ids: torch.Tensor,
+            embeddings: torch.Tensor
+    ) -> Tuple[torch.Tensor]:
+        """Forward
+        Parameters
+        ----------
+        ids       : torch.Tensor
+                    Labels of samples from the dataset respectively to the
+                    embeddings.
+        embeddings: torch.Tensor
+                    Embeddings is the ouput of the neural network given data
+                    samples from the dataset.
+        Returns
+        -------
+        loss     : torch.Tensor
+                   Loss obtained with the AllTripletMiner sampling technique.
+        f_pos_tri: torch.Tensor
+                   Proportion of postive triplets. Less is better. The value
+                   should decrease with training.
+        """
+        torch.autograd.set_detect_anomaly(True)
+        n = ids.size(0)
+        embeddings = F.normalize(embeddings, p=2, dim=1) / np.sqrt(self.tau)
+        pairwise_sim = torch.matmul(embeddings, embeddings.t())
+        pairwise_sim[np.arange(n), np.arange(n)] = -self.LARGE_NUMBER
+        logprob_mat = F.log_softmax(pairwise_sim, dim=1)
+        mask = self._valid_pair_mask(ids).float()
+        logprob_mat = logprob_mat * mask
+        n_pairs = torch.sum(mask)
+        loss = -torch.sum(logprob_mat) / n_pairs
+
+        return loss, n_pairs

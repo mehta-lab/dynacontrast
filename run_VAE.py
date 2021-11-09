@@ -1,5 +1,5 @@
 from pipeline.patch_VAE import assemble_VAE, process_VAE, trajectory_matching
-from SingleCellPatch.extract_patches import get_im_sites
+from SingleCellPatch.patch_utils import get_im_sites
 from torch.multiprocessing import Pool, Queue, Process
 import torch.multiprocessing as mp
 import os, sys
@@ -30,12 +30,10 @@ def main(method_, raw_dir_, supp_dir_, config_):
 
     inputs = raw_dir_
     outputs = supp_dir_
-    weights = config_.latent_encoding.weights
+    weights = config_.inference.weights
     # channels = config_.inference.channels
     # network = config_.inference.model
-    # gpu_id = config_.latent_encoding.gpu_ids
-    gpus = config_.latent_encoding.gpu_ids
-    gpu_count = len(gpus)
+    gpu_ids = config_.inference.gpu_ids
 
     # assert len(channels) > 0, "At least one channel must be specified"
 
@@ -51,8 +49,6 @@ def main(method_, raw_dir_, supp_dir_, config_):
     elif method == 'process':
         if not inputs:
             raise AttributeError("raw directory must be specified when method = process")
-        # if type(weights) is not list:
-        #     weights = [weights]
         if not weights:
             raise AttributeError("pytorch VQ-VAE weights path must be specified when method = process")
 
@@ -63,35 +59,20 @@ def main(method_, raw_dir_, supp_dir_, config_):
         if not outputs:
             raise AttributeError("supplementary directory must be specified when method = trajectory_matching")
 
-    if config_.latent_encoding.fov:
-        sites = config_.latent_encoding.fov
+    if config_.inference.fov:
+        sites = config_.inference.fov
     else:
         # get all "XX-SITE_#" identifiers in raw data directory
         sites = get_im_sites(inputs)
 
     wells = set(s[:2] for s in sites)
     mp.set_start_method('spawn', force=True)
-
-    # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    # os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in gpu_ids])
-    # print("CUDA_VISIBLE_DEVICES=" + os.environ["CUDA_VISIBLE_DEVICES"])
     for i, well in enumerate(wells):
         well_sites = [s for s in sites if s[:2] == well]
         args = (inputs, outputs, well_sites, config_)
-        gpu_idx = i % gpu_count
-        gpu_id = gpus[gpu_idx]
-        p = Worker(args, gpuid=gpu_id, method=method)
+        p = Worker(args, gpuid=gpu_ids[0], method=method)
         p.start()
         p.join()
-
-        # for weight in weights:
-        #     print('Encoding using model {}'.format(weight))
-        #     well_sites = [s for s in sites if s[:2] == well]
-        #     args = (inputs, outputs, channels, weight, well_sites, network)
-        #     p = Worker(args, gpuid=gpu, method=method)
-        #     p.start()
-        #     p.join()
-
 
 def parse_args():
     """
@@ -122,7 +103,12 @@ if __name__ == '__main__':
     arguments = parse_args()
     config = YamlReader()
     config.read_config(arguments.config)
-
+    if type(config.inference.weights) is not list:
+        weights = [config.inference.weights]
+    else:
+        weights = config.inference.weights
     # batch run
-    for (raw_dir, supp_dir) in list(zip(config.latent_encoding.raw_dirs, config.latent_encoding.supp_dirs)):
-        main(arguments.method, raw_dir, supp_dir, config)
+    for (raw_dir, supp_dir) in zip(config.inference.raw_dirs, config.inference.supp_dirs):
+        for weight in weights:
+            config.inference.weights = weight
+            main(arguments.method, raw_dir, supp_dir, config)

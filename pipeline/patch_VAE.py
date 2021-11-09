@@ -3,19 +3,21 @@ os.environ['KERAS_BACKEND'] = 'tensorflow'
 import pickle
 import torch
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import importlib
 import inspect
 from configs.config_reader import YamlReader
-from torch.utils.data import TensorDataset
-
-from SingleCellPatch.extract_patches import process_site_extract_patches, im_adjust
+from torch.utils.data import TensorDataset, DataLoader
+from tqdm import tqdm
+from SingleCellPatch.extract_patches import process_site_extract_patches
+from SingleCellPatch.patch_utils import im_adjust
 from SingleCellPatch.generate_trajectories import process_site_build_trajectory, process_well_generate_trajectory_relations
 
-from pipeline.train_utils import zscore, zscore_patch
+from pipeline.train_utils import zscore, zscore_patch, ImageDataset
 import HiddenStateExtractor.vae as vae
 import HiddenStateExtractor.resnet as resnet
-from HiddenStateExtractor.vq_vae_supp import prepare_dataset_v2, vae_preprocess
+from HiddenStateExtractor.vq_vae_supp import assemble_patches, prepare_dataset_v2, vae_preprocess
 
 NETWORK_MODULE = 'run_training'
 
@@ -108,7 +110,7 @@ def build_trajectories(summary_folder: str,
             print("Site data not found %s" % site_path, flush=True)
         else:
             print("Building trajectories %s" % site_path, flush=True)
-            process_site_build_trajectory(site_supp_files_folder, **kwargs)
+            process_site_build_trajectory(site_supp_files_folder, min_len=config.patch.min_length)
     return
 
 
@@ -116,6 +118,7 @@ def assemble_VAE(raw_folder: str,
                  supp_folder: str,
                  sites: list,
                  config: YamlReader,
+                 patch_type: str='masked_mat',
                  **kwargs):
     """ Wrapper method for prepare dataset for VAE encoding
 
@@ -137,8 +140,7 @@ def assemble_VAE(raw_folder: str,
 
     """
 
-    channels = config.latent_encoding.channels
-    patch_type = config.latent_encoding.patch_type
+    channels = config.inference.channels
 
     assert len(channels) > 0, "At least one channel must be specified"
 
@@ -148,30 +150,35 @@ def assemble_VAE(raw_folder: str,
     well = sites[0][:2]
 
     # Prepare dataset for VAE
-    dat_fs = []
+
+    df_meta = pd.DataFrame()
+    traj_id_offsets = {'time trajectory ID': 0, 'slice trajectory ID': 0}
     for site in sites:
         supp_files_folder = os.path.join(supp_folder, '%s-supps' % site[:2], '%s' % site)
-        dat_fs.extend([os.path.join(supp_files_folder, f) \
-            for f in os.listdir(supp_files_folder) if f.startswith('stacks')])
-
-    dataset, fs = prepare_dataset_v2(dat_fs, channels=channels, key=patch_type)
-    assert fs == sorted(fs)
-    
-    print(f"\tsaving {os.path.join(raw_folder, '%s_file_paths.pkl' % well)}")
-    with open(os.path.join(raw_folder, '%s_file_paths.pkl' % well), 'wb') as f:
-        pickle.dump(fs, f)
-
+        meta_path = os.path.join(supp_files_folder, 'patch_meta.csv')
+        df_meta_site = pd.read_csv(meta_path, index_col=0, converters={
+            'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
+        # offset trajectory ids to make it unique
+        for col in df_meta_site.columns:
+            if col in traj_id_offsets:
+                df_meta_site[col] += traj_id_offsets[col]
+                traj_id_offsets[col] = df_meta_site[col].max() + 1
+        df_meta = df_meta.append(df_meta_site, ignore_index=True)
+    df_meta.reset_index(drop=True, inplace=True)
+    meta_path = os.path.join(supp_folder, '%s-supps' % well, 'patch_meta.csv')
+    df_meta.to_csv(meta_path, sep=',')
+    dataset = assemble_patches(df_meta, supp_folder, channels=channels, key=patch_type)
+    assert len(dataset) == len(df_meta), 'Number of patches and rows in metadata are not consistent.'
     print(f"\tsaving {os.path.join(raw_folder, '%s_static_patches.pkl' % well)}")
     with open(os.path.join(raw_folder, '%s_static_patches.pkl' % well), 'wb') as f:
         pickle.dump(dataset, f, protocol=4)
-
-    well_supp_files_folder = os.path.join(supp_folder, '%s-supps' % well)
-    relations, labels = process_well_generate_trajectory_relations(fs, sites, well_supp_files_folder)
+    relations, labels = process_well_generate_trajectory_relations(df_meta, track_dim='slice')
+    print('len(labels):', len(labels))
+    print('len(dataset):', len(dataset))
     with open(os.path.join(raw_folder, "%s_static_patches_relations.pkl" % well), 'wb') as f:
         pickle.dump(relations, f)
     with open(os.path.join(raw_folder, "%s_static_patches_labels.pkl" % well), 'wb') as f:
         pickle.dump(labels, f)
-
     return
 
 
@@ -372,27 +379,26 @@ def process_VAE(raw_folder: str,
     # For inference same normalization parameters can be used or determined from the inference data,
     # depending on if the inference data has the same distribution as training data
 
-    model_path = config_.latent_encoding.weights
-    channels = config_.latent_encoding.channels
-
-    num_hiddens = config_.latent_encoding.num_hiddens
-    num_residual_hiddens = config_.latent_encoding.num_residual_hiddens
-    num_embeddings = config_.latent_encoding.num_embeddings
-    commitment_cost = config_.latent_encoding.commitment_cost
-
-    network = config_.latent_encoding.network
-    weights_dir = config_.latent_encoding.weights
-    save_output = config_.latent_encoding.save_output
+    model_dir = config_.inference.weights
+    # weights_dir = config_.files.weights_dir
+    channels = config_.inference.channels
+    num_hiddens = config_.training.num_hiddens
+    num_residual_hiddens = config_.training.num_residual_hiddens
+    num_embeddings = config_.training.num_embeddings
+    commitment_cost = config_.training.commitment_cost
+    network = config_.inference.network
+    network_width = config_.inference.network_width
+    save_output = config_.inference.save_output
+    batch_size = config_.inference.batch_size
+    num_workers = config_.inference.num_workers
+    normalization = config_.inference.normalization
 
     assert len(channels) > 0, "At least one channel must be specified"
 
-    # these sites should be from a single condition (C5, C4, B-wells, etc..)
-
-    model_path = os.path.join(weights_dir, 'model.pt')
-    model_name = os.path.basename(weights_dir)
-    output_dir = os.path.join(raw_folder, model_name)
+    model_name = os.path.basename(model_dir)
+    # output_dir = os.path.join(raw_folder, model_name)
+    output_dir = os.path.join(raw_folder, model_name + '_no_projhd')
     os.makedirs(output_dir, exist_ok=True)
-    # output_dir = raw_folder
 
     #### cardiomyocyte data###
     # channel_mean = [0.49998672, 0.007081]
@@ -403,19 +409,23 @@ def process_VAE(raw_folder: str,
     # channel_std = [0.05, 0.05, 0.05]
 
     ### estimate mean and std from the data ###
-    channel_mean = config_.latent_encoding.channel_mean
-    channel_std = config_.latent_encoding.channel_std
-
-    assert len(set(site[:2] for site in sites)) == 1, \
-        "Sites should be from a single well/condition"
+    channel_mean = config_.inference.channel_mean
+    channel_std = config_.inference.channel_std
+    # channel_mean = None
+    # channel_std = None
     well = sites[0][:2]
-
-    print(f"\tloading file paths {os.path.join(raw_folder, '%s_file_paths.pkl' % well)}")
-    fs = pickle.load(open(os.path.join(raw_folder, '%s_file_paths.pkl' % well), 'rb'))
     print(f"\tloading static patches {os.path.join(raw_folder, '%s_static_patches.pkl' % well)}")
     dataset = pickle.load(open(os.path.join(raw_folder, '%s_static_patches.pkl' % well), 'rb'))
+    dataset = dataset[:, channels, ...]
+    if normalization == 'dataset':
+        dataset = zscore(np.squeeze(dataset), channel_mean=channel_mean, channel_std=channel_std).astype(np.float32)
+        print('channel_mean:', channel_mean)
+    elif normalization == 'patch':
+        dataset = zscore_patch(np.squeeze(dataset)).astype(np.float32)
+    else:
+        raise ValueError('Parameter "normalization" must be "dataset" or "patch"')
     # dataset = zscore(np.squeeze(dataset), channel_mean=channel_mean, channel_std=channel_std)
-    dataset = zscore_patch(np.squeeze(dataset))
+    # dataset = zscore_patch(np.squeeze(dataset))
     dataset = TensorDataset(torch.from_numpy(dataset).float())
     assert len(dataset.tensors[0].shape) == 4, "dataset tensor dimension can only be 4, not {}".format(len(dataset.tensors[0].shape))
     _, n_channels, x_size, y_size = dataset.tensors[0].shape
@@ -431,32 +441,24 @@ def process_VAE(raw_folder: str,
                             gpu=True)
 
         model = model.to(device)
-        try:
-            if not model_path is None:
-                model.load_state_dict(torch.load(model_path))
-            else:
-                model.load_state_dict(torch.load('HiddenStateExtractor/save_0005_bkp4.pt'))
-        except Exception as ex:
-            print(ex)
-            raise ValueError("Error in loading model weights for VQ-VAE")
+        model.load_state_dict(torch.load(os.path.join(model_dir, 'model.pt')))
 
-        z_bs = {}
-        z_as = {}
+        z_bs = []
+        z_as = []
         for i in range(len(dataset)):
             sample = dataset[i:(i + 1)][0]
             sample = sample.reshape([-1, n_channels, x_size, y_size]).to(device)
             z_b = model.enc(sample)
             z_a, _, _ = model.vq(z_b)
-            f_n = fs[i]
-            z_bs[f_n] = z_b.cpu().data.numpy()
-            z_as[f_n] = z_a.cpu().data.numpy()
+            z_bs[i] = z_b.cpu().data.numpy()
+            z_as[i] = z_a.cpu().data.numpy()
 
-        dats = np.stack([z_bs[f] for f in fs], 0).reshape((len(dataset), -1))
+        dats = np.stack(z_bs, 0).reshape((len(dataset), -1))
         print(f"\tsaving {os.path.join(output_dir, '%s_latent_space.pkl' % well)}")
         with open(os.path.join(output_dir, '%s_latent_space.pkl' % well), 'wb') as f:
             pickle.dump(dats, f, protocol=4)
 
-        dats = np.stack([z_as[f] for f in fs], 0).reshape((len(dataset), -1))
+        dats = np.stack(z_as, 0).reshape((len(dataset), -1))
         print(f"\tsaving {os.path.join(output_dir, '%s_latent_space_after.pkl' % well)}")
         with open(os.path.join(output_dir, '%s_latent_space_after.pkl' % well), 'wb') as f:
             pickle.dump(dats, f, protocol=4)
@@ -489,18 +491,26 @@ def process_VAE(raw_folder: str,
                 plt.close(fig)
     elif 'ResNet' in network:
         network_cls = getattr(resnet, 'EncodeProject')
-        model = network_cls(arch=network)
+        model = network_cls(arch=network, num_inputs=len(channels), width=network_width)
         model = model.to(device)
         # print(model)
-        model.load_state_dict(torch.load(model_path, map_location=device))
+        model.load_state_dict(torch.load(os.path.join(model_dir, 'model.pt'), map_location=device))
         model.eval()
-        # tri_val_set = TripletDataset(val_labels, lambda index: val_set[index], n_pos_samples)
+        data_loader = DataLoader(dataset=dataset,
+                                  batch_size=batch_size,
+                                  shuffle=False,
+                                  num_workers=num_workers,
+                                  pin_memory=False,
+                                  )
         h_s = []
-        for i in range(len(dataset)):
-            sample = dataset[i:(i + 1)][0]
-            sample = sample.reshape([-1, n_channels, x_size, y_size]).to(device)
-            h_s.append(model.encode(sample, out='z').cpu().data.numpy().squeeze())
-        dats = np.stack(h_s)
+        with tqdm(data_loader, desc='inference batch') as batch_pbar:
+            for b_idx, batch in enumerate(batch_pbar):
+                data, = batch
+                data = data.to(device)
+                code = model.encode(data, out='h').cpu().data.numpy().squeeze()
+                # print(code.shape)
+                h_s.append(code)
+        dats = np.concatenate(h_s, axis=0)
         print(f"\tsaving {os.path.join(output_dir, '%s_latent_space.pkl' % well)}")
         with open(os.path.join(output_dir, '%s_latent_space.pkl' % well), 'wb') as f:
             pickle.dump(dats, f, protocol=4)

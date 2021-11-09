@@ -6,17 +6,18 @@ import argparse
 import torch as t
 import torch.nn as nn
 import pickle
+import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 # from torchvision import transforms
 from scipy.sparse import csr_matrix
-
+from sklearn.model_selection import train_test_split
 from HiddenStateExtractor.vae import CHANNEL_MAX
-from SingleCellPatch.extract_patches import im_adjust, cv2_fn_wrapper
-from pipeline.train_utils import EarlyStopping, TripletDataset, zscore, zscore_patch
-from HiddenStateExtractor.losses import AllTripletMiner
+from SingleCellPatch.patch_utils import cv2_fn_wrapper, im_adjust
+from pipeline.train_utils import EarlyStopping, TripletDataset, zscore, zscore_patch, apply_affine_transform
+from HiddenStateExtractor.losses import AllTripletMiner, NTXent
 from HiddenStateExtractor.resnet import EncodeProject
 import HiddenStateExtractor.vae as vae
 
@@ -320,15 +321,45 @@ def concat_relations(relations, labels, offsets):
     new_labels = np.concatenate(new_labels, axis=0)
     return new_relations, new_labels
 
+def random_crop(img, crop_ratio = (0.6, 1)):
+    # Note: image_data_format is 'channel_first'
+    height, width = img.shape[1], img.shape[2]
+    dy = int(np.random.uniform(crop_ratio[0], crop_ratio[1]) * height)
+    dx = int(np.random.uniform(crop_ratio[0], crop_ratio[1]) * height)
+    x = np.random.randint(0, width - dx + 1)
+    y = np.random.randint(0, height - dy + 1)
+    img = img[:, y:(y+dy), x:(x+dx)]
+    return cv2_fn_wrapper(cv2.resize, img, (height, width))
 
-def augment_img(img):
+
+def random_intensity_jitter(img, mean_jitter, std_jitter):
+    if mean_jitter == 0 and std_jitter == 0:
+        return img
+    img_j = []
+    for im in img:
+        mean_offset = np.random.uniform(-mean_jitter, mean_jitter)
+        std_scale = 1 + np.random.uniform(-std_jitter, std_jitter)
+        im = unzscore(im, mean_offset, std_scale)
+        img_j.append(im)
+    return np.stack(img_j)
+
+# def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio = (0.6, 1), intensity_jitter=(0.5, 0.5)):
+def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio=(0.6, 1), intensity_jitter=(0, 0)):
+# def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio=(1, 1), intensity_jitter=(0.5, 0.5)):
     """Data augmentation with flipping and rotation"""
     # TODO: Rewrite with torchvision transform
+    img = random_intensity_jitter(img, intensity_jitter[0], intensity_jitter[1])
+    if crop_ratio[0] != 1 or crop_ratio[1] != 1:
+        img = random_crop(img, crop_ratio=crop_ratio)
     flip_idx = np.random.choice([0, 1, 2])
     if flip_idx != 0:
         img = np.flip(img, axis=flip_idx)
-    rot_idx = int(np.random.choice([0, 1, 2, 3]))
-    img = np.rot90(img, k=rot_idx, axes=(1, 2))
+    theta = np.random.uniform(-rotate_range, rotate_range)
+    zoom = np.random.uniform(zoom_range[0], zoom_range[1])
+    img = apply_affine_transform(img, zx=zoom, theta=theta,
+                                zy=zoom, fill_mode='constant', cval=0., order=1)
+    # rot_idx = int(np.random.choice([0, 1, 2, 3]))
+    # img = np.rot90(img, k=rot_idx, axes=(1, 2))
     return img
 
 
@@ -375,7 +406,7 @@ def get_mask(mask, sample_ids, device='cuda:0'):
 
 
 def run_one_batch(model, batch, train_loss, model_kwargs = None, optimizer=None,
-                transform=None, training=True):
+                transform=False, training=True):
     """ Train on a single batch of data
     Args:
         model (nn.Module): pytorch model object
@@ -393,7 +424,7 @@ def run_one_batch(model, batch, train_loss, model_kwargs = None, optimizer=None,
         train_loss (dict): updated batch-wise training or validation loss
 
     """
-    if transform is not None:
+    if transform:
         for idx_in_batch in range(len(batch)):
             img = batch[idx_in_batch]
             flip_idx = np.random.choice([0, 1, 2])
@@ -423,7 +454,7 @@ def train_val_split(dataset, labels, val_split_ratio=0.15, seed=0):
     Args:
         dataset (TensorDataset): dataset of training inputs
         labels (list or np array): labels corresponding to inputs
-        val_split_ratio (float or None): fraction of the dataset used for validation
+        val_split_ratio (float): fraction of the dataset used for validation
         seed (int): seed controlling random split of the dataset
 
     Returns:
@@ -433,7 +464,7 @@ def train_val_split(dataset, labels, val_split_ratio=0.15, seed=0):
         val_labels (list or np array): validation labels corresponding to inputs in train set
 
     """
-    assert val_split_ratio is None or 0 < val_split_ratio < 1
+    assert 0 < val_split_ratio < 1
     n_samples = len(dataset)
     # Declare sample indices and do an initial shuffle
     sample_ids = list(range(n_samples))
@@ -451,6 +482,41 @@ def train_val_split(dataset, labels, val_split_ratio=0.15, seed=0):
     val_labels = labels[val_ids]
     return train_set, train_labels, val_set, val_labels
 
+def train_val_split_by_col(dataset, labels, df_meta, split_cols=('data_dir', 'FOV'), val_split_ratio=0.15, seed=0):
+    """Split the dataset into train and validation sets
+
+    Args:
+        dataset (TensorDataset): dataset of training inputs
+        labels (list or np array): labels corresponding to inputs
+        val_split_ratio (float): fraction of the dataset used for validation
+        seed (int): seed controlling random split of the dataset
+
+    Returns:
+        train_set (TensorDataset): train set
+        train_labels (list or np array): train labels corresponding to inputs in train set
+        val_set (TensorDataset): validation set
+        val_labels (list or np array): validation labels corresponding to inputs in train set
+
+    """
+    assert 0 < val_split_ratio < 1
+    train_set, train_labels, val_set, val_labels, df_train, df_val = \
+        train_test_split(dataset, labels, df_meta, test_size=val_split_ratio, random_state=seed, stratify=df_meta[split_cols])
+    # n_samples = len(dataset)
+    # # Declare sample indices and do an initial shuffle
+    # sample_ids = list(range(n_samples))
+    # np.random.seed(seed)
+    # np.random.shuffle(sample_ids)
+    # split = int(np.floor(val_split_ratio * n_samples))
+    # # randomly choose the split start
+    # np.random.seed(seed)
+    # split_start = np.random.randint(0, n_samples - split)
+    # val_ids = sample_ids[split_start: split_start + split]
+    # train_ids = sample_ids[:split_start] + sample_ids[split_start + split:]
+    # train_set = dataset[train_ids]
+    # train_labels = labels[train_ids]
+    # val_set = dataset[val_ids]
+    # val_labels = labels[val_ids]
+    return train_set, train_labels, val_set, val_labels
 
 def train(model, dataset, output_dir, relation_mat=None, mask=None,
           n_epochs=10, lr=0.001, batch_size=16, device='cuda:0', shuffle_data=False,
@@ -792,6 +858,7 @@ def main(config_):
 
     ### Settings ###
     network = config.training.network
+    network_width = config.training.network_width
     num_inputs = config.training.num_inputs
     num_hiddens = config.training.num_hiddens
     num_residual_hiddens = config.training.num_residual_hiddens
@@ -816,16 +883,14 @@ def main(config_):
     # earlystop_metric = 'total_loss'
     retrain = config.training.retrain
     earlystop_metric = 'positive_triplet'
-    # model_name = 'A549_{}_mrg{}_npos{}_bh{}_alltriloss_tr'.format(
     model_name = config.training.model_name
     start_model_path = config.training.start_model_path
     start_epoch = config.training.start_epoch
     use_mask = config.training.use_mask
-
-    cs = [0, 1]
-    cs_mask = [2, 3]
-    input_shape = (128, 128)
-
+    channels = config.training.channels
+    normalization = config.training.normalization
+    loss = config.training.loss
+    temperature = config.training.temperature
     device = t.device('cuda:%d' % gpu_id)
 
     # use data loader for training ResNet
@@ -834,20 +899,18 @@ def main(config_):
         use_loader = True
 
     dir_sets = list(zip(supp_dirs, train_dirs, raw_dirs))
-    # dir_sets = dir_sets[0:1]
-    ts_keys = []
     datasets = []
     masks = []
     relations = []
     labels = []
     id_offsets = [0]
     ### Load Data ###
+    df_meta_all = []
     for supp_dir, train_dir, raw_dir in dir_sets:
         os.makedirs(train_dir, exist_ok=True)
-        print(f"\tloading file paths {os.path.join(raw_dir, 'im_file_paths.pkl')}")
-        ts_key = pickle.load(open(os.path.join(raw_dir, 'im_file_paths.pkl'), 'rb'))
         print(f"\tloading static patches {os.path.join(raw_dir, 'im_static_patches.pkl')}")
         dataset = pickle.load(open(os.path.join(raw_dir, 'im_static_patches.pkl'), 'rb'))
+        dataset = dataset[:, channels, ...]
         print('dataset.shape:', dataset.shape)
         label = pickle.load(open(os.path.join(raw_dir, "im_static_patches_labels.pkl"), 'rb'))
         # Note that `relations` is depending on the order of fs (should not sort)
@@ -855,18 +918,30 @@ def main(config_):
         relation = pickle.load(open(os.path.join(raw_dir, 'im_static_patches_relations.pkl'), 'rb'))
         # dataset_mask = TensorDataset(dataset_mask.tensors[0][np.array(inds_in_order)])
         # print('relations:', relations)
-        print('len(ts_key):', len(ts_key))
+        print('len(label):', len(label))
         print('len(dataset):', len(dataset))
         relations.append(relation)
-        ts_keys += ts_key
+        meta_path = os.path.join(supp_dir, 'im-supps', 'patch_meta.csv')
+        df_meta = pd.read_csv(meta_path, index_col=0, converters={
+            'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
+        df_meta['data_dir'] = os.path.dirname(raw_dir)
+        df_meta_all.append(df_meta)
+
         # TODO: handle non-singular z-dimension case earlier in the pipeline
-        dataset = zscore(np.squeeze(dataset), channel_mean=channel_mean, channel_std=channel_std).astype(np.float32)
+        if normalization == 'dataset':
+            dataset = zscore(np.squeeze(dataset), channel_mean=channel_mean, channel_std=channel_std).astype(np.float32)
+        elif normalization == 'patch':
+            dataset = zscore_patch(np.squeeze(dataset)).astype(np.float32)
+        else:
+            raise ValueError('Parameter "normalization" must be "dataset" or "patch"')
         datasets.append(dataset)
         labels.append(label)
         id_offsets.append(len(dataset))
         if use_mask:
             mask = pickle.load(open(os.path.join(raw_dir, 'im_static_patches_mask.pkl'), 'rb'))
             masks.append(mask)
+    df_meta_all = pd.concat(df_meta_all, axis=0)
+    df_meta_all.reset_index(drop=True, inplace=True)
     id_offsets = id_offsets[:-1]
     dataset = np.concatenate(datasets, axis=0)
     if use_mask:
@@ -875,6 +950,10 @@ def main(config_):
         masks = None
     # dataset = zscore(dataset, channel_mean=channel_mean, channel_std=channel_std).astype(np.float32)
     relations, labels = concat_relations(relations, labels, offsets=id_offsets)
+    print('len(labels):', len(labels))
+    print('len(dataset):', len(dataset))
+    # treat every patch as different
+    # labels = np.arange(len(labels))
     # Save the model in the train directory of the last dataset
     model_dir = os.path.join(train_dir, model_name)
     #TODO: write dataset class for VAE models
@@ -911,6 +990,7 @@ def main(config_):
     else:
         train_set, train_labels, val_set, val_labels = \
             train_val_split(dataset, labels, val_split_ratio=val_split_ratio, seed=0)
+        # SimCLR uses n_pos_samples=2
         tri_train_set = TripletDataset(train_labels, lambda index: augment_img(train_set[index]), n_pos_samples)
         tri_val_set = TripletDataset(val_labels, lambda index: augment_img(val_set[index]), n_pos_samples)
         # Data Loader
@@ -926,11 +1006,17 @@ def main(config_):
                                   num_workers=num_workers,
                                   pin_memory=False,
                                   )
-        tri_loss = AllTripletMiner(margin=margin).to(device)
+        if loss == 'triplet':
+            loss_fn = AllTripletMiner(margin=margin).to(device)
+        elif loss == 'ntxent':
+            loss_fn = NTXent(tau=temperature).to(device)
+        else:
+            raise ValueError('Loss name {} is not defined.'.format(loss))
+
         # tri_loss = HardNegativeTripletMiner(margin=margin).to(device)
         ## Initialize Model ###
 
-        model = EncodeProject(arch=network, loss=tri_loss, num_inputs=num_inputs).to(device)
+        model = EncodeProject(arch=network, loss=loss_fn, num_inputs=num_inputs, width=network_width).to(device)
 
         if start_model_path:
             print('Initialize the model with state {} ...'.format(start_model_path))
