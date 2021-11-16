@@ -110,7 +110,9 @@ def build_trajectories(summary_folder: str,
             print("Site data not found %s" % site_path, flush=True)
         else:
             print("Building trajectories %s" % site_path, flush=True)
-            process_site_build_trajectory(site_supp_files_folder, min_len=config.patch.min_length)
+            process_site_build_trajectory(site_supp_files_folder,
+                                          min_len=config.patch.min_length,
+                                          track_dim=config.patch.track_dim)
     return
 
 
@@ -175,8 +177,10 @@ def assemble_VAE(raw_folder: str,
     relations, labels = process_well_generate_trajectory_relations(df_meta, track_dim='slice')
     print('len(labels):', len(labels))
     print('len(dataset):', len(dataset))
+    assert len(dataset) == len(labels), 'Number of patches and labels are not consistent.'
     with open(os.path.join(raw_folder, "%s_static_patches_relations.pkl" % well), 'wb') as f:
         pickle.dump(relations, f)
+    print(f"\tsaving {os.path.join(raw_folder,'%s_static_patches_labels.pkl' % well)}")
     with open(os.path.join(raw_folder, "%s_static_patches_labels.pkl" % well), 'wb') as f:
         pickle.dump(labels, f)
     return

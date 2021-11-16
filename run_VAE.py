@@ -16,7 +16,6 @@ class Worker(Process):
 
     def run(self):
         if self.method == 'assemble':
-            # assemble_VAE(*self.inputs)
             #TODO: make "patch_type" part of the config
             assemble_VAE(*self.inputs, patch_type='mat')
         elif self.method == 'process':
