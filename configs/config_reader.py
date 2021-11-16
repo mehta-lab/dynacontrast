@@ -43,7 +43,8 @@ PATCH = {
     'save_fig',
     'reload',
     'skip_boundary',
-    'min_length'
+    'min_length',
+    'track_dim'
 }
 
 INFERENCE = {
@@ -136,39 +137,51 @@ TRAINING = {
     'use_mask',
     'normalization',
     'loss',
-    'temperature'
+    'temperature',
+    'augmentations'
 }
 
 
 class Object:
     pass
 
+class Struct(object):
+    def __init__(self, data):
+        for name, value in data.items():
+            setattr(self, name, self._wrap(value))
 
-class YamlReader(Object):
+    def _wrap(self, value):
+        if isinstance(value, (tuple, list, set, frozenset)):
+            return type(value)([self._wrap(v) for v in value])
+        else:
+            return Struct(value) if isinstance(value, dict) else value
+
+
+class YamlReader(Struct):
 
     def __init__(self):
         self.config = None
 
         # easy way to assign attributes to each category
         # self.files = Object()
-        self.preprocess = Object()
-        self.patch = Object()
-        self.inference = Object()
-        self.segmentation = Object()
-        self.dim_reduction = Object()
-        self.training = Object()
+        # self.preprocess = Object()
+        # self.patch = Object()
+        # self.inference = Object()
+        # self.segmentation = Object()
+        # self.dim_reduction = Object()
+        # self.training = Object()
 
     def read_config(self, yml_config):
         with open(yml_config, 'r') as f:
             self.config = yaml.load(f)
-
-            # self._parse_files()
-            self._parse_preprocessing()
-            self._parse_patch()
-            self._parse_inference()
-            self._parse_segmentation()
-            self._parse_dim_reduction()
-            self._parse_training()
+            super(YamlReader, self).__init__(self.config)
+            # # self._parse_files()
+            # self._parse_preprocessing()
+            # self._parse_patch()
+            # self._parse_inference()
+            # self._parse_segmentation()
+            # self._parse_dim_reduction()
+            # self._parse_training()
 
     def _parse_preprocessing(self):
         for key, value in self.config['preprocess'].items():
@@ -209,6 +222,11 @@ class YamlReader(Object):
         for key, value in self.config['training'].items():
             if key in TRAINING:
                 setattr(self.training, key, value)
+                if isinstance(value, dict):
+                    for key_sub, value_sub in value.items():
+                        setattr(self.training, key, value)
+
+
             else:
                 log.warning(f"yaml TRAINING config field {key} is not recognized")
 

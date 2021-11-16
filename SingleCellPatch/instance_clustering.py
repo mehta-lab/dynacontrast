@@ -23,14 +23,8 @@ log = logging.getLogger(__name__)
 
 
 def instance_clustering(inst_segmentation,
-                        # ct_thr=(500, 12000),
                         ct_thr=(0, np.inf),
-                        save_fig=True,
-                        map_path=None,
-                        fg_thr=0.5,
-                        # DBSCAN_thr=(10, 250),
-                        DBSCAN_thr=(5, 60),
-                        n_jobs=10):
+                        ):
     """ Perform instance clustering on a static frame
 
     Args:
@@ -38,14 +32,8 @@ def instance_clustering(inst_segmentation,
             size (n_classes(3), z(1), x, y)
         ct_thr (tuple, optional): lower and upper threshold for cell size 
             (number of pixels in segmentation mask)
-        save_fig (bool, optional): if to save instance segmentation as an
-            image
         map_path (str or None, optional): path to the image (if `save_fig`
             is True)
-        fg_thr (float, optional): threshold of foreground, any pixel with 
-            predicted background prob less than this value would be regarded as
-            foreground (MG or Non-MG)
-        DBSCAN_thr (tuple, optional): parameters for DBSCAN, (eps, min_samples)
 
     Returns:
         (list * 3): 3 lists (MG, Non-MG, intermediate) of cell identifiers
@@ -54,19 +42,9 @@ def instance_clustering(inst_segmentation,
         np.array: array of cell IDs of foreground pixels
 
     """
-    # cell_segmentation = check_segmentation_dim(cell_segmentation)
-    # all_cells = cell_segmentation[0] < fg_thr
     pixel_ids = np.nonzero(inst_segmentation) # ([row ID1, row ID2, ...], [col ID1, col ID2, ...]]
     positions_labels = inst_segmentation[pixel_ids]
     pixel_ids = np.transpose(pixel_ids)
-
-    # if len(pixel_ids) < 1000:
-    #     # No cell detected
-    #     return [], [], np.zeros((0, 2), dtype=int), np.zeros((0,), dtype=int)
-    #
-    # # DBSCAN clustering of cell pixels
-    # clustering = DBSCAN(eps=DBSCAN_thr[0], min_samples=DBSCAN_thr[1], n_jobs=n_jobs).fit(pixel_ids)
-    # positions_labels = clustering.labels_
     cell_ids, cell_sizes = np.unique(positions_labels, return_counts=True)
     # neglect unclustered pixels
     cell_sizes = cell_sizes[cell_ids >= 0]
@@ -91,8 +69,6 @@ def instance_clustering(inst_segmentation,
         cell_positions.append(mean_pos)
         cell_ids_new.append(cell_id)
         cell_sizes_new.append(cell_size)
-
-
     return cell_ids_new, cell_positions, cell_sizes_new, pixel_ids, positions_labels
 
 
@@ -101,7 +77,7 @@ def process_site_instance_segmentation(site,
                                        raw_data_segmented,
                                        site_supp_files_folder,
                                        save_fig=False,
-                                       **kwargs):
+                                       ):
     """
     Wrapper method for instance segmentation
 
@@ -110,11 +86,11 @@ def process_site_instance_segmentation(site,
         "cell_pixel_assignments.pkl": pixel compositions of cells;
         "segmentation_*.png": image of instance segmentation results.
 
-
     :param raw_data: (str) path to image stack (.npy)
     :param raw_data_segmented: (str) path to semantic segmentation stack (.npy)
     :param site_supp_files_folder: (str) path to the folder where supplementary files will be saved
-    :param kwargs:
+    :param save_fig (bool, optional): if to save instance segmentation as an
+            image
     :return:
     """
 

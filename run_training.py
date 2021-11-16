@@ -13,7 +13,7 @@ from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 # from torchvision import transforms
 from scipy.sparse import csr_matrix
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GroupShuffleSplit
 from HiddenStateExtractor.vae import CHANNEL_MAX
 from SingleCellPatch.patch_utils import cv2_fn_wrapper, im_adjust
 from pipeline.train_utils import EarlyStopping, TripletDataset, zscore, zscore_patch, apply_affine_transform
@@ -343,8 +343,8 @@ def random_intensity_jitter(img, mean_jitter, std_jitter):
         img_j.append(im)
     return np.stack(img_j)
 
-# def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio = (0.6, 1), intensity_jitter=(0.5, 0.5)):
-def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio=(0.6, 1), intensity_jitter=(0, 0)):
+def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio = (0.6, 1), intensity_jitter=(0.5, 0.5)):
+# def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio=(0.6, 1), intensity_jitter=(0, 0)):
 # def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio=(1, 1), intensity_jitter=(0.5, 0.5)):
     """Data augmentation with flipping and rotation"""
     # TODO: Rewrite with torchvision transform
@@ -482,7 +482,7 @@ def train_val_split(dataset, labels, val_split_ratio=0.15, seed=0):
     val_labels = labels[val_ids]
     return train_set, train_labels, val_set, val_labels
 
-def train_val_split_by_col(dataset, labels, df_meta, split_cols=('data_dir', 'FOV'), val_split_ratio=0.15, seed=0):
+def train_val_split_by_col(dataset, labels, df_meta, split_cols=None, val_split_ratio=0.15, seed=0):
     """Split the dataset into train and validation sets
 
     Args:
@@ -499,24 +499,18 @@ def train_val_split_by_col(dataset, labels, df_meta, split_cols=('data_dir', 'FO
 
     """
     assert 0 < val_split_ratio < 1
-    train_set, train_labels, val_set, val_labels, df_train, df_val = \
-        train_test_split(dataset, labels, df_meta, test_size=val_split_ratio, random_state=seed, stratify=df_meta[split_cols])
-    # n_samples = len(dataset)
-    # # Declare sample indices and do an initial shuffle
-    # sample_ids = list(range(n_samples))
-    # np.random.seed(seed)
-    # np.random.shuffle(sample_ids)
-    # split = int(np.floor(val_split_ratio * n_samples))
-    # # randomly choose the split start
-    # np.random.seed(seed)
-    # split_start = np.random.randint(0, n_samples - split)
-    # val_ids = sample_ids[split_start: split_start + split]
-    # train_ids = sample_ids[:split_start] + sample_ids[split_start + split:]
-    # train_set = dataset[train_ids]
-    # train_labels = labels[train_ids]
-    # val_set = dataset[val_ids]
-    # val_labels = labels[val_ids]
-    return train_set, train_labels, val_set, val_labels
+    if split_cols is None:
+        split_cols = ['data_dir', 'FOV']
+    split_key = df_meta[split_cols].apply(lambda row: '_'.join(row.values.astype(str)), axis=1)
+    gss = GroupShuffleSplit(test_size=val_split_ratio, n_splits=2, random_state=seed)
+    (train_ids, val_ids), _ = gss.split(df_meta, groups=split_key)
+    df_meta['split'] = 'train'
+    df_meta.loc[val_ids, 'split'] = 'val'
+    train_set = dataset[train_ids]
+    train_labels = labels[train_ids]
+    val_set = dataset[val_ids]
+    val_labels = labels[val_ids]
+    return train_set, train_labels, val_set, val_labels, df_meta
 
 def train(model, dataset, output_dir, relation_mat=None, mask=None,
           n_epochs=10, lr=0.001, batch_size=16, device='cuda:0', shuffle_data=False,
@@ -692,148 +686,6 @@ def train_with_loader(model, train_loader, val_loader, output_dir,
     writer.close()
     return model
 
-
-def train_adversarial(model,
-                      dataset,
-                      output_dir,
-                      use_channels=[],
-                      relation_mat=None,
-                      mask=None,
-                      n_epochs=10,
-                      lr_recon=0.001,
-                      lr_dis=0.001,
-                      lr_gen=0.001,
-                      batch_size=16,
-                      device='cuda:0',
-                      shuffle_data=False,
-                      transform=True,
-                      seed=None):
-    """ Train function for AAE.
-
-    Args:
-        model (nn.Module): autoencoder model (AAE)
-        dataset (TensorDataset): dataset of training inputs
-        output_dir (str): path for writing model saves and loss curves
-        use_channels (list, optional): list of channel indices used for model
-            training, by default all channels will be used
-        relation_mat (scipy csr matrix or None, optional): if given, sparse
-            matrix of pairwise relations
-        mask (TensorDataset or None, optional): if given, dataset of training
-            sample weight masks
-        n_epochs (int, optional): number of epochs
-        lr_recon (float, optional): learning rate for reconstruction (encoder +
-            decoder)
-        lr_dis (float, optional): learning rate for discriminator
-        lr_gen (float, optional): learning rate for generator
-        batch_size (int, optional): batch size
-        device (str, optional): device (cuda or cpu) where models are running
-        shuffle_data (bool, optional): shuffle data at the end of the epoch to
-            add randomness to mini-batch; Set False when using matching loss
-        transform (bool, optional): data augmentation
-        seed (int, optional): random seed
-
-    Returns:
-        nn.Module: trained model
-
-    """
-    if not seed is None:
-        np.random.seed(seed)
-        t.manual_seed(seed)
-    total_channels, n_z, x_size, y_size = dataset[0][0].shape[-4:]
-    if len(use_channels) == 0:
-        use_channels = list(range(total_channels))
-    n_channels = len(use_channels)
-    assert n_channels == model.num_inputs
-
-    model = model.to(device)
-    optim_enc = t.optim.Adam(model.enc.parameters(), lr_recon)
-    optim_dec = t.optim.Adam(model.dec.parameters(), lr_recon)
-    optim_enc_g = t.optim.Adam(model.enc.parameters(), lr_gen)
-    optim_enc_d = t.optim.Adam(model.enc_d.parameters(), lr_dis)
-    model.zero_grad()
-
-    n_samples = len(dataset)
-    n_batches = int(np.ceil(n_samples/batch_size))
-    # Declare sample indices and do an initial shuffle
-    sample_ids = np.arange(n_samples)
-    if shuffle_data:
-        np.random.shuffle(sample_ids)
-    writer = SummaryWriter(output_dir)
-
-    for epoch in range(n_epochs):
-        mean_loss = {}
-        print('start epoch %d' % epoch)
-        for i in range(n_batches):
-            # Deal with last batch might < batch size
-            sample_ids_batch = sample_ids[i * batch_size:min((i + 1) * batch_size, n_samples)]
-            batch = dataset[sample_ids_batch][0]
-            assert len(batch.shape) == 5, "Input should be formatted as (batch, c, z, x, y)"
-            batch = batch[:, np.array(use_channels)].permute(0, 2, 1, 3, 4).reshape((-1, n_channels, x_size, y_size))
-            batch = batch.to(device)
-
-            # Data augmentation
-            if transform:
-                for idx_in_batch in range(len(sample_ids_batch)):
-                    img = batch[idx_in_batch]
-                    flip_idx = np.random.choice([0, 1, 2])
-                    if flip_idx != 0:
-                        img = t.flip(img, dims=(flip_idx,))
-                    rot_idx = int(np.random.choice([0, 1, 2, 3]))
-                    batch[idx_in_batch] = t.rot90(img, k=rot_idx, dims=[1, 2])
-
-            # Relation (adjacent frame, same trajectory)
-            if not relation_mat is None:
-                batch_relation_mat = relation_mat[sample_ids_batch][:, sample_ids_batch]
-                batch_relation_mat = batch_relation_mat.todense()
-                batch_relation_mat = t.from_numpy(batch_relation_mat).float().to(device)
-            else:
-                batch_relation_mat = None
-
-            # Reconstruction mask
-            if not mask is None:
-                batch_mask = mask[sample_ids_batch][0][:, 1:2] # Hardcoded second slice (large mask)
-                batch_mask = (batch_mask + 1.) / 2.
-                batch_mask = batch_mask.to(device)
-            else:
-                batch_mask = None
-
-            _, loss_dict = model(batch,
-                                 time_matching_mat=batch_relation_mat,
-                                 batch_mask=batch_mask)
-            loss_dict['total_loss'].backward()
-            optim_enc.step()
-            optim_dec.step()
-            loss_dict2 = model.adversarial_loss(batch)
-            loss_dict2['descriminator_loss'].backward()
-            optim_enc_d.step()
-            loss_dict2['generator_loss'].backward()
-            optim_enc_g.step()
-            model.zero_grad()
-
-            # Record loss
-            for key, loss in loss_dict.items():
-                if not key in mean_loss:
-                    mean_loss[key] = []
-                mean_loss[key].append(loss)
-
-            for key, loss in loss_dict2.items():
-                if not key in mean_loss:
-                    mean_loss[key] = []
-                mean_loss[key].append(loss)
-
-        # shuffle samples ids at the end of the epoch
-        if shuffle_data:
-            np.random.shuffle(sample_ids)
-        for key, loss in mean_loss.items():
-            mean_loss[key] = sum(loss)/len(loss) if len(loss) > 0 else -1.
-            writer.add_scalar('Loss/' + key, mean_loss[key], epoch)
-        writer.flush()
-        print('epoch %d' % epoch)
-        print(''.join(['{}:{:0.4f}  '.format(key, loss) for key, loss in mean_loss.items()]))
-        t.save(model.state_dict(), os.path.join(output_dir, 'model_epoch%d.pt' % epoch))
-    writer.close()
-    return model
-
 def main(config_):
     """
     Args:
@@ -891,8 +743,8 @@ def main(config_):
     normalization = config.training.normalization
     loss = config.training.loss
     temperature = config.training.temperature
+    intensity_jitter = config.training.augmentations.intensity_jitter
     device = t.device('cuda:%d' % gpu_id)
-
     # use data loader for training ResNet
     use_loader = False
     if 'ResNet' in network:
@@ -988,11 +840,14 @@ def main(config_):
                       patience=patience,
                       )
     else:
-        train_set, train_labels, val_set, val_labels = \
-            train_val_split(dataset, labels, val_split_ratio=val_split_ratio, seed=0)
+        train_set, train_labels, val_set, val_labels, df_meta_all = \
+            train_val_split_by_col(dataset, labels, df_meta_all, split_cols=['data_dir', 'FOV'], val_split_ratio=val_split_ratio, seed=0)
+        os.makedirs(model_dir, exist_ok=True)
+        meta_path = os.path.join(model_dir, 'patch_meta.csv')
+        df_meta_all.to_csv(meta_path, sep=',')
         # SimCLR uses n_pos_samples=2
-        tri_train_set = TripletDataset(train_labels, lambda index: augment_img(train_set[index]), n_pos_samples)
-        tri_val_set = TripletDataset(val_labels, lambda index: augment_img(val_set[index]), n_pos_samples)
+        tri_train_set = TripletDataset(train_labels, lambda index: augment_img(train_set[index], intensity_jitter=intensity_jitter), n_pos_samples)
+        tri_val_set = TripletDataset(val_labels, lambda index: augment_img(val_set[index], intensity_jitter=intensity_jitter), n_pos_samples)
         # Data Loader
         train_loader = DataLoader(tri_train_set,
                                     batch_size=batch_size_adj,

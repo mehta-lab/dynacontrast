@@ -177,7 +177,7 @@ def assemble_patches(df_meta,
                                        (df_meta['time'] == t) &
                                        (df_meta['slice'] == z), 'cell ID'].to_list()
                 stack_path_site = os.path.join(supp_files_folder, 'stacks_t{}_z{}.pkl'.format(t, z))
-                print(f"\tloading data {stack_path_site}")
+                # print(f"\tloading data {stack_path_site}")
                 with open(stack_path_site, 'rb') as f:
                     stack_dict = pickle.load(f)
                 for cell_id in cell_ids:
