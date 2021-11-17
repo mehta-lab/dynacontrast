@@ -1,6 +1,6 @@
 # bchhun, {2020-02-21}
 
-from pipeline.patch_VAE import extract_patches, build_trajectories
+from utils.patch_VAE import extract_patches, build_trajectories
 from SingleCellPatch.patch_utils import get_im_sites
 from multiprocessing import Pool, Queue, Process
 import os

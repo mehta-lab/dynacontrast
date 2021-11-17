@@ -5,7 +5,7 @@
 #     b. retardance: 1400~1600 plus/minus 1500~1800
 # 3. save as '$SITE_NAME.npy' numpy array, dtype=uint16
 
-from pipeline.preprocess import write_raw_to_npy
+from utils.preprocess import write_raw_to_npy
 import os
 import fnmatch
 import re

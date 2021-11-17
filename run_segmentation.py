@@ -1,8 +1,8 @@
 # bchhun, {2020-02-21}
 
-from pipeline.segmentation import segmentation, instance_segmentation
+from utils.segmentation import segmentation, instance_segmentation
 from SingleCellPatch.patch_utils import get_im_sites
-from pipeline.segmentation_validation import segmentation_validation_michael
+from utils.segmentation_validation import segmentation_validation_michael
 from multiprocessing import Process
 import os
 import numpy as np

@@ -1,4 +1,4 @@
-from pipeline.patch_VAE import assemble_VAE, process_VAE, trajectory_matching
+from utils.patch_VAE import assemble_VAE, process_VAE, trajectory_matching
 from SingleCellPatch.patch_utils import get_im_sites
 from torch.multiprocessing import Pool, Queue, Process
 import torch.multiprocessing as mp
