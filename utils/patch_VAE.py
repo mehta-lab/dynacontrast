@@ -10,14 +10,16 @@ import inspect
 from configs.config_reader import YamlReader
 from torch.utils.data import TensorDataset, DataLoader
 from tqdm import tqdm
+import zarr
 from SingleCellPatch.extract_patches import process_site_extract_patches
 from SingleCellPatch.patch_utils import im_adjust
 from SingleCellPatch.generate_trajectories import process_site_build_trajectory, process_well_generate_trajectory_relations
 
-from pipeline.train_utils import zscore, zscore_patch, ImageDataset
+from utils.train_utils import zscore, zscore_patch
+from dataset.dataset import ImageDataset
 import HiddenStateExtractor.vae as vae
 import HiddenStateExtractor.resnet as resnet
-from HiddenStateExtractor.vq_vae_supp import assemble_patches, prepare_dataset_v2, vae_preprocess
+from HiddenStateExtractor.vq_vae_supp import assemble_patches, prepare_dataset_v2
 
 NETWORK_MODULE = 'run_training'
 
@@ -171,18 +173,18 @@ def assemble_VAE(raw_folder: str,
     df_meta.to_csv(meta_path, sep=',')
     dataset = assemble_patches(df_meta, supp_folder, channels=channels, key=patch_type)
     assert len(dataset) == len(df_meta), 'Number of patches and rows in metadata are not consistent.'
-    print(f"\tsaving {os.path.join(raw_folder, '%s_static_patches.pkl' % well)}")
-    with open(os.path.join(raw_folder, '%s_static_patches.pkl' % well), 'wb') as f:
-        pickle.dump(dataset, f, protocol=4)
+    output_fname = os.path.join(raw_folder, 'cell_patches.zarr')
+    print('saving {}...'.format(output_fname))
+    zarr.save(output_fname, dataset)
     relations, labels = process_well_generate_trajectory_relations(df_meta, track_dim='slice')
     print('len(labels):', len(labels))
     print('len(dataset):', len(dataset))
     assert len(dataset) == len(labels), 'Number of patches and labels are not consistent.'
-    with open(os.path.join(raw_folder, "%s_static_patches_relations.pkl" % well), 'wb') as f:
-        pickle.dump(relations, f)
-    print(f"\tsaving {os.path.join(raw_folder,'%s_static_patches_labels.pkl' % well)}")
-    with open(os.path.join(raw_folder, "%s_static_patches_labels.pkl" % well), 'wb') as f:
-        pickle.dump(labels, f)
+    # with open(os.path.join(raw_folder, "%s_static_patches_relations.pkl" % well), 'wb') as f:
+    #     pickle.dump(relations, f)
+    output_fname = os.path.join(raw_folder, 'patch_labels.zarr')
+    print('saving {}...'.format(output_fname))
+    zarr.save(output_fname, labels)
     return
 
 

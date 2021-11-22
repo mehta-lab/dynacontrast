@@ -8,7 +8,6 @@ Created on Mon Feb  8 21:27:26 2021
 import numpy as np
 import os
 import matplotlib
-
 from SingleCellPatch.patch_utils import within_range, im_adjust
 
 matplotlib.use('AGG')

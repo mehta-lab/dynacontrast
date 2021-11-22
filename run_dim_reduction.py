@@ -7,7 +7,7 @@ import matplotlib
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 import umap
-from pipeline.train_utils import zscore
+from utils.train_utils import zscore
 
 def fit_PCA(train_data, weights_dir, labels, conditions):
     """ Fit a PCA model accounting for top 50% variance to the train_data,

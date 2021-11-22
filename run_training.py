@@ -1,6 +1,4 @@
 import os
-import h5py
-import cv2
 import numpy as np
 import argparse
 import torch as t
@@ -8,92 +6,20 @@ import torch.nn as nn
 import pickle
 import pandas as pd
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 # from torchvision import transforms
 from scipy.sparse import csr_matrix
-from sklearn.model_selection import train_test_split, GroupShuffleSplit
-from HiddenStateExtractor.vae import CHANNEL_MAX
-from SingleCellPatch.patch_utils import cv2_fn_wrapper, im_adjust
-from pipeline.train_utils import EarlyStopping, TripletDataset, zscore, zscore_patch, apply_affine_transform
+from utils.train_utils import EarlyStopping, zscore, zscore_patch, train_val_split_by_col
+from dataset.dataset import TripletDataset
+from dataset.augmentation import augment_img
 from HiddenStateExtractor.losses import AllTripletMiner, NTXent
 from HiddenStateExtractor.resnet import EncodeProject
 import HiddenStateExtractor.vae as vae
 
 from configs.config_reader import YamlReader
 import queue
-import distutils
 
-
-# Dataset preparation functions
-def prepare_dataset(fs,
-                    cs=[0, 1],
-                    input_shape=(128, 128)):
-    """ Prepare input dataset for VAE
-
-    This function reads individual h5 files (deprecated)
-
-    Args:
-        fs (list of str): list of file paths/single cell patch identifiers,
-            images are saved as individual h5 files
-        cs (list of int, optional): channels in the input
-        input_shape (tuple, optional): input shape (height and width only)
-
-    Returns:
-        TensorDataset: dataset of training inputs
-
-    """
-    tensors = []
-    for i, f_n in enumerate(fs):
-        if i%1000 == 0:
-            print("Processed %d" % i)
-        with h5py.File(f_n, 'r') as f:
-            dat = f['masked_mat']
-            if cs is None:
-                cs = np.arange(dat.shape[0])
-            dat = np.array(dat)[np.array(cs)].astype(float)
-            resized_dat = cv2_fn_wrapper(cv2.resize, dat, input_shape)
-            tensors.append(resized_dat)
-    dataset = np.stack(tensors, 0)
-    return dataset
-
-
-def prepare_dataset_from_collection(fs,
-                                    cs=[0, 1],
-                                    input_shape=(128, 128),
-                                    file_path='./',
-                                    file_suffix='_all_patches.pkl'):
-    """ Prepare input dataset for VAE, deprecated
-
-    This function reads assembled pickle files (deprecated)
-
-    Args:
-        fs (list of str): list of pickle file names
-        cs (list of int, optional): channels in the input
-        input_shape (tuple, optional): input shape (height and width only)
-        file_path (str, optional): root folder for saved pickle files
-        file_suffix (str, optional): suffix of saved pickle files
-
-    Returns:
-        TensorDataset: dataset of training inputs
-
-    """
-
-    tensors = {}
-    files = set([f.split('/')[-2] for f in fs])
-    for file_name in files:
-        file_dat = pickle.load(open(os.path.join(file_path, '%s%s' % (file_name, file_suffix)), 'rb')) #HARDCODED
-        fs_ = [f for f in fs if f.split('/')[-2] == file_name ]
-        for i, f_n in enumerate(fs_):
-            dat = file_dat[f_n]['masked_mat'] # n_channels, n_z, x_size, y_size
-            if cs is None:
-                cs = np.arange(dat.shape[0])
-            dat = np.array(dat)[np.array(cs)].astype(float)
-            resized_dat = cv2_fn_wrapper(cv2.resize, dat, input_shape)
-            tensors[f_n] = resized_dat
-    dataset = np.stack([tensors[key] for key in fs], 0)
-    return dataset
 
 def reorder_with_trajectories(dataset, relations, seed=None):
     """ Reorder `dataset` to facilitate training with matching loss
@@ -160,54 +86,6 @@ def reorder_with_trajectories(dataset, relations, seed=None):
     return TensorDataset(new_tensor), relation_mat, inds_in_order
 
 
-def vae_preprocess(dataset,
-                   use_channels=[0, 1],
-                   preprocess_setting={
-                       0: ("normalize", 0.4, 0.05), # Phase
-                       1: ("scale", 0.05), # Retardance
-                       2: ("normalize", 0.5, 0.05), # Brightfield
-                       },
-                   clip=[0, 1]):
-    """ Preprocess `dataset` to a suitable range
-
-    Args:
-        dataset (TensorDataset): dataset of training inputs
-        use_channels (list, optional): list of channel indices used for model
-            prediction
-        preprocess_setting (dict, optional): settings for preprocessing,
-            formatted as {channel index: (preprocessing mode,
-                                          target mean,
-                                          target std(optional))}
-
-    Returns:
-        TensorDataset: dataset of training inputs (after preprocessing)
-
-    """
-
-    tensor = dataset
-    output = []
-    for channel in use_channels:
-        channel_slice = tensor[:, channel]
-        channel_slice = channel_slice / CHANNEL_MAX # Scale to [0, 1]
-        if preprocess_setting[channel][0] == "scale":
-            target_mean = preprocess_setting[channel][1]
-            slice_mean = channel_slice.mean()
-            output_slice = channel_slice / slice_mean * target_mean
-        elif preprocess_setting[channel][0] == "normalize":
-            target_mean = preprocess_setting[channel][1]
-            target_sd = preprocess_setting[channel][2]
-            slice_mean = channel_slice.mean()
-            slice_sd = channel_slice.std()
-            z_channel_slice = (channel_slice - slice_mean) / slice_sd
-            output_slice = z_channel_slice * target_sd + target_mean
-        else:
-            raise ValueError("Preprocessing mode not supported")
-        if clip:
-            output_slice = np.clip(output_slice, clip[0], clip[1])
-        output.append(output_slice)
-    output = np.stack(output, 1)
-    return output
-
 def unzscore(im_norm, mean, std):
     """
     Revert z-score normalization applied during preprocessing. Necessary
@@ -221,81 +99,6 @@ def unzscore(im_norm, mean, std):
 
     return im
 
-def rescale(dataset):
-    """ Rescale value range of image patches in `dataset` to CHANNEL_RANGE
-
-    Args:
-        dataset (TensorDataset): dataset before rescaling
-
-    Returns:
-        TensorDataset: dataset after rescaling
-
-    """
-    tensor = dataset.tensors[0]
-    channel_mean = t.mean(tensor, dim=[0, 2, 3])
-    channel_std = t.mean(tensor, dim=[0, 2, 3])
-    print('channel_mean:', channel_mean)
-    print('channel_std:', channel_std)
-    assert len(channel_mean) == tensor.shape[1]
-    channel_slices = []
-    for i in range(len(CHANNEL_RANGE)):
-        mean = channel_mean[i]
-        std = channel_std[i]
-        channel_slice = (tensor[:, i] - mean) / std
-        # channel_slice = t.clamp(channel_slice, -1, 1)
-        channel_slices.append(channel_slice)
-    new_tensor = t.stack(channel_slices, 1)
-    return TensorDataset(new_tensor)
-
-
-def resscale_backward(tensor):
-    """ Reverse operation of `rescale`
-
-    Args:
-        dataset (TensorDataset): dataset after rescaling
-
-    Returns:
-        TensorDataset: dataset before rescaling
-
-    """
-    assert len(tensor.shape) == 4
-    assert len(CHANNEL_RANGE) == tensor.shape[1]
-    channel_slices = []
-    for i in range(len(CHANNEL_RANGE)):
-        lower_, upper_ = CHANNEL_RANGE[i]
-        channel_slice = lower_ + tensor[:, i] * (upper_ - lower_)
-        channel_slices.append(channel_slice)
-    new_tensor = t.stack(channel_slices, 1)
-    return new_tensor
-
-def save_recon_images(val_dataloader, model, model_dir):
-    # %% display recon images
-    os.makedirs(model_dir, exist_ok=True)
-    batch = next(iter(val_dataloader))
-    labels, data = batch
-    labels = t.cat([label for label in labels], axis=0)
-    data = t.cat([datum for datum in data], axis=0)
-    output = model(data.to(device), labels.to(device))[0]
-    for i in range(10):
-        im_phase = im_adjust(data[i, 0].data.numpy())
-        im_phase_recon = im_adjust(output[i, 0].cpu().data.numpy())
-        im_retard = im_adjust(data[i, 1].data.numpy())
-        im_retard_recon = im_adjust(output[i, 1].cpu().data.numpy())
-        n_rows = 2
-        n_cols = 2
-        fig, ax = plt.subplots(n_rows, n_cols, squeeze=False)
-        ax = ax.flatten()
-        fig.set_size_inches((15, 5 * n_rows))
-        axis_count = 0
-        for im, name in zip([im_phase, im_phase_recon, im_retard, im_retard_recon],
-                            ['phase', 'phase_recon', 'im_retard', 'retard_recon']):
-            ax[axis_count].imshow(np.squeeze(im), cmap='gray')
-            ax[axis_count].axis('off')
-            ax[axis_count].set_title(name, fontsize=12)
-            axis_count += 1
-        fig.savefig(os.path.join(model_dir, 'recon_%d.jpg' % i),
-                    dpi=300, bbox_inches='tight')
-        plt.close(fig)
 
 def concat_relations(relations, labels, offsets):
     """combine relation dictionaries from multiple datasets
@@ -320,47 +123,6 @@ def concat_relations(relations, labels, offsets):
         new_labels.append(new_label)
     new_labels = np.concatenate(new_labels, axis=0)
     return new_relations, new_labels
-
-def random_crop(img, crop_ratio = (0.6, 1)):
-    # Note: image_data_format is 'channel_first'
-    height, width = img.shape[1], img.shape[2]
-    dy = int(np.random.uniform(crop_ratio[0], crop_ratio[1]) * height)
-    dx = int(np.random.uniform(crop_ratio[0], crop_ratio[1]) * height)
-    x = np.random.randint(0, width - dx + 1)
-    y = np.random.randint(0, height - dy + 1)
-    img = img[:, y:(y+dy), x:(x+dx)]
-    return cv2_fn_wrapper(cv2.resize, img, (height, width))
-
-
-def random_intensity_jitter(img, mean_jitter, std_jitter):
-    if mean_jitter == 0 and std_jitter == 0:
-        return img
-    img_j = []
-    for im in img:
-        mean_offset = np.random.uniform(-mean_jitter, mean_jitter)
-        std_scale = 1 + np.random.uniform(-std_jitter, std_jitter)
-        im = unzscore(im, mean_offset, std_scale)
-        img_j.append(im)
-    return np.stack(img_j)
-
-def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio = (0.6, 1), intensity_jitter=(0.5, 0.5)):
-# def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio=(0.6, 1), intensity_jitter=(0, 0)):
-# def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio=(1, 1), intensity_jitter=(0.5, 0.5)):
-    """Data augmentation with flipping and rotation"""
-    # TODO: Rewrite with torchvision transform
-    img = random_intensity_jitter(img, intensity_jitter[0], intensity_jitter[1])
-    if crop_ratio[0] != 1 or crop_ratio[1] != 1:
-        img = random_crop(img, crop_ratio=crop_ratio)
-    flip_idx = np.random.choice([0, 1, 2])
-    if flip_idx != 0:
-        img = np.flip(img, axis=flip_idx)
-    theta = np.random.uniform(-rotate_range, rotate_range)
-    zoom = np.random.uniform(zoom_range[0], zoom_range[1])
-    img = apply_affine_transform(img, zx=zoom, theta=theta,
-                                zy=zoom, fill_mode='constant', cval=0., order=1)
-    # rot_idx = int(np.random.choice([0, 1, 2, 3]))
-    # img = np.rot90(img, k=rot_idx, axes=(1, 2))
-    return img
 
 
 def get_relation_tensor(relation_mat, sample_ids, device='cuda:0'):
@@ -447,70 +209,6 @@ def run_one_batch(model, batch, train_loss, model_kwargs = None, optimizer=None,
     del batch, train_loss_dict
     return model, train_loss
 
-
-def train_val_split(dataset, labels, val_split_ratio=0.15, seed=0):
-    """Split the dataset into train and validation sets
-
-    Args:
-        dataset (TensorDataset): dataset of training inputs
-        labels (list or np array): labels corresponding to inputs
-        val_split_ratio (float): fraction of the dataset used for validation
-        seed (int): seed controlling random split of the dataset
-
-    Returns:
-        train_set (TensorDataset): train set
-        train_labels (list or np array): train labels corresponding to inputs in train set
-        val_set (TensorDataset): validation set
-        val_labels (list or np array): validation labels corresponding to inputs in train set
-
-    """
-    assert 0 < val_split_ratio < 1
-    n_samples = len(dataset)
-    # Declare sample indices and do an initial shuffle
-    sample_ids = list(range(n_samples))
-    np.random.seed(seed)
-    np.random.shuffle(sample_ids)
-    split = int(np.floor(val_split_ratio * n_samples))
-    # randomly choose the split start
-    np.random.seed(seed)
-    split_start = np.random.randint(0, n_samples - split)
-    val_ids = sample_ids[split_start: split_start + split]
-    train_ids = sample_ids[:split_start] + sample_ids[split_start + split:]
-    train_set = dataset[train_ids]
-    train_labels = labels[train_ids]
-    val_set = dataset[val_ids]
-    val_labels = labels[val_ids]
-    return train_set, train_labels, val_set, val_labels
-
-def train_val_split_by_col(dataset, labels, df_meta, split_cols=None, val_split_ratio=0.15, seed=0):
-    """Split the dataset into train and validation sets
-
-    Args:
-        dataset (TensorDataset): dataset of training inputs
-        labels (list or np array): labels corresponding to inputs
-        val_split_ratio (float): fraction of the dataset used for validation
-        seed (int): seed controlling random split of the dataset
-
-    Returns:
-        train_set (TensorDataset): train set
-        train_labels (list or np array): train labels corresponding to inputs in train set
-        val_set (TensorDataset): validation set
-        val_labels (list or np array): validation labels corresponding to inputs in train set
-
-    """
-    assert 0 < val_split_ratio < 1
-    if split_cols is None:
-        split_cols = ['data_dir', 'FOV']
-    split_key = df_meta[split_cols].apply(lambda row: '_'.join(row.values.astype(str)), axis=1)
-    gss = GroupShuffleSplit(test_size=val_split_ratio, n_splits=2, random_state=seed)
-    (train_ids, val_ids), _ = gss.split(df_meta, groups=split_key)
-    df_meta['split'] = 'train'
-    df_meta.loc[val_ids, 'split'] = 'val'
-    train_set = dataset[train_ids]
-    train_labels = labels[train_ids]
-    val_set = dataset[val_ids]
-    val_labels = labels[val_ids]
-    return train_set, train_labels, val_set, val_labels, df_meta
 
 def train(model, dataset, output_dir, relation_mat=None, mask=None,
           n_epochs=10, lr=0.001, batch_size=16, device='cuda:0', shuffle_data=False,
