@@ -1,25 +1,31 @@
 import os
 import numpy as np
 import argparse
+import dask
+import dask.array as da
 import torch as t
 import torch.nn as nn
-import pickle
 import pandas as pd
+import time
+import zarr
+from numcodecs import blosc
 from tqdm import tqdm
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 # from torchvision import transforms
 from scipy.sparse import csr_matrix
-from utils.train_utils import EarlyStopping, zscore, zscore_patch, train_val_split_by_col
-from dataset.dataset import TripletDataset
+
+from utils.patch_VAE import concat_relations
+from utils.train_utils import EarlyStopping, DataLoader
+from dataset.dataset import TripletDataset, TripletIterDataset, worker_init_fn
 from dataset.augmentation import augment_img
 from HiddenStateExtractor.losses import AllTripletMiner, NTXent
 from HiddenStateExtractor.resnet import EncodeProject
-import HiddenStateExtractor.vae as vae
 
 from configs.config_reader import YamlReader
 import queue
-
+dask.config.set(scheduler='synchronous')
+blosc.use_threads = True
 
 def reorder_with_trajectories(dataset, relations, seed=None):
     """ Reorder `dataset` to facilitate training with matching loss
@@ -84,45 +90,6 @@ def reorder_with_trajectories(dataset, relations, seed=None):
                               shape=(len(dataset), len(dataset)))
     relation_mat = relation_mat[np.array(inds_in_order)][:, np.array(inds_in_order)]
     return TensorDataset(new_tensor), relation_mat, inds_in_order
-
-
-def unzscore(im_norm, mean, std):
-    """
-    Revert z-score normalization applied during preprocessing. Necessary
-    before computing SSIM
-
-    :param input_image: input image for un-zscore
-    :return: image at its original scale
-    """
-
-    im = im_norm * (std + np.finfo(float).eps) + mean
-
-    return im
-
-
-def concat_relations(relations, labels, offsets):
-    """combine relation dictionaries from multiple datasets
-
-    Args:
-        relations (list): list of relation dict to combine
-        labels (list): list of label array to combine
-        offsets (list): offset to add to the indices
-
-    Returns: new_relations (dict): dictionary of combined relations
-
-    """
-    new_relations = {}
-    new_labels = []
-    for relation, label, offset in zip(relations, labels, offsets):
-        old_keys = relation.keys()
-        new_keys = [(id1 + offset, id2 + offset) for id1, id2 in old_keys]
-        new_label = label + offset
-        # make a new dict with updated keys
-        relation = dict(zip(new_keys, relation.values()))
-        new_relations.update(relation)
-        new_labels.append(new_label)
-    new_labels = np.concatenate(new_labels, axis=0)
-    return new_relations, new_labels
 
 
 def get_relation_tensor(relation_mat, sample_ids, device='cuda:0'):
@@ -400,27 +367,16 @@ def main(config_):
     channel_mean = config.training.channel_mean
     channel_std = config.training.channel_std
 
-    raw_dirs = config.training.raw_dirs
-    train_dirs = config.training.weights_dirs
-    supp_dirs = config.training.supp_dirs
-    for train_dir in train_dirs:
-        os.makedirs(train_dir, exist_ok=True)
+    raw_dir = config.training.raw_dir
+    train_dir = config.training.weights_dir
+    # supp_dirs = config.training.supp_dirs
+    os.makedirs(train_dir, exist_ok=True)
 
     ### Settings ###
     network = config.training.network
     network_width = config.training.network_width
     num_inputs = config.training.num_inputs
-    num_hiddens = config.training.num_hiddens
-    num_residual_hiddens = config.training.num_residual_hiddens
-    num_residual_layers = config.training.num_residual_layers
-    num_embeddings = config.training.num_embeddings
-    commitment_cost = config.training.commitment_cost
-    weight_matching = config.training.weight_matching
-    w_a = config.training.w_a
-    w_t = config.training.w_t
-    w_n = config.training.w_n
     margin = config.training.margin
-    val_split_ratio = config.training.val_split_ratio
     learn_rate = config.training.learn_rate
     patience = config.training.patience
     n_pos_samples = config.training.n_pos_samples
@@ -447,144 +403,93 @@ def main(config_):
     use_loader = False
     if 'ResNet' in network:
         use_loader = True
-
-    dir_sets = list(zip(supp_dirs, train_dirs, raw_dirs))
-    datasets = []
-    masks = []
-    relations = []
-    labels = []
-    id_offsets = [0]
-    ### Load Data ###
-    df_meta_all = []
-    for supp_dir, train_dir, raw_dir in dir_sets:
-        os.makedirs(train_dir, exist_ok=True)
-        print(f"\tloading static patches {os.path.join(raw_dir, 'im_static_patches.pkl')}")
-        dataset = pickle.load(open(os.path.join(raw_dir, 'im_static_patches.pkl'), 'rb'))
-        dataset = dataset[:, channels, ...]
-        print('dataset.shape:', dataset.shape)
-        label = pickle.load(open(os.path.join(raw_dir, "im_static_patches_labels.pkl"), 'rb'))
-        # Note that `relations` is depending on the order of fs (should not sort)
-        # `relations` is generated by script "generate_trajectory_relations.py"
-        relation = pickle.load(open(os.path.join(raw_dir, 'im_static_patches_relations.pkl'), 'rb'))
-        # dataset_mask = TensorDataset(dataset_mask.tensors[0][np.array(inds_in_order)])
-        # print('relations:', relations)
-        print('len(label):', len(label))
-        print('len(dataset):', len(dataset))
-        relations.append(relation)
-        meta_path = os.path.join(supp_dir, 'im-supps', 'patch_meta.csv')
-        df_meta = pd.read_csv(meta_path, index_col=0, converters={
-            'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
-        df_meta['data_dir'] = os.path.dirname(raw_dir)
-        df_meta_all.append(df_meta)
-
-        # TODO: handle non-singular z-dimension case earlier in the pipeline
-        if normalization == 'dataset':
-            dataset = zscore(np.squeeze(dataset), channel_mean=channel_mean, channel_std=channel_std).astype(np.float32)
-        elif normalization == 'patch':
-            dataset = zscore_patch(np.squeeze(dataset)).astype(np.float32)
-        else:
-            raise ValueError('Parameter "normalization" must be "dataset" or "patch"')
-        datasets.append(dataset)
-        labels.append(label)
-        id_offsets.append(len(dataset))
-        if use_mask:
-            mask = pickle.load(open(os.path.join(raw_dir, 'im_static_patches_mask.pkl'), 'rb'))
-            masks.append(mask)
-    df_meta_all = pd.concat(df_meta_all, axis=0)
-    df_meta_all.reset_index(drop=True, inplace=True)
-    id_offsets = id_offsets[:-1]
-    dataset = np.concatenate(datasets, axis=0)
-    if use_mask:
-        masks = np.concatenate(masks, axis=0)
+    os.makedirs(train_dir, exist_ok=True)
+    print('loading data {}'.format(raw_dir))
+    t0 = time.time()
+    if normalization == 'dataset':
+        train_set = zarr.open(os.path.join(raw_dir, 'cell_patches_datasetnorm_train.zarr'))
+        val_set = zarr.open(os.path.join(raw_dir, 'cell_patches_datasetnorm_val.zarr'))
+        train_labels = np.load(os.path.join(raw_dir, 'patch_labels_datasetnorm_train.npy'))
+        val_labels = np.load(os.path.join(raw_dir, 'patch_labels_datasetnorm_val.npy'))
+        # df_meta_all = pd.read_csv(os.path.join(raw_dir, 'patch_meta_datasetnorm.csv'), index_col=0, converters={
+        #     'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
+    elif normalization == 'patch':
+        train_set_sync = zarr.ProcessSynchronizer(os.path.join(raw_dir, 'cell_patches_train.sync'))
+        train_set = zarr.open(os.path.join(raw_dir, 'cell_patches_train.zarr'), synchronizer=train_set_sync)
+        val_set = zarr.open(os.path.join(raw_dir, 'cell_patches_val.zarr'))
+        train_labels = np.load(os.path.join(raw_dir, 'patch_labels_train.npy'))
+        val_labels = np.load(os.path.join(raw_dir, 'patch_labels_val.npy'))
+        # df_meta_all = pd.read_csv(os.path.join(raw_dir, 'patch_meta.csv'), index_col=0, converters={
+        #     'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
     else:
-        masks = None
-    # dataset = zscore(dataset, channel_mean=channel_mean, channel_std=channel_std).astype(np.float32)
-    relations, labels = concat_relations(relations, labels, offsets=id_offsets)
-    print('len(labels):', len(labels))
-    print('len(dataset):', len(dataset))
+        raise ValueError('Parameter "normalization" must be "dataset" or "patch"')
+    t1 = time.time()
+    print('loading dataset takes:', t1 - t0)
+    print('train dataset.shape:', train_set.shape)
+    print('val dataset.shape:', val_set.shape)
+    # PyTorch 1.2 can't detect length of IterableDataset
+    n_batch_train = np.ceil(len(train_labels) / batch_size_adj)
+    n_batch_val = np.ceil(len(val_labels) / batch_size_adj)
     # treat every patch as different
     # labels = np.arange(len(labels))
     # Save the model in the train directory of the last dataset
     model_dir = os.path.join(train_dir, model_name)
-    #TODO: write dataset class for VAE models
-    if not use_loader:
-        dataset = TensorDataset(t.from_numpy(dataset).float())
-        dataset, relation_mat, inds_in_order = reorder_with_trajectories(dataset, relations, seed=123)
-        labels = labels[inds_in_order]
-        network_cls = getattr(vae, network)
-        model = network_cls(num_inputs=num_inputs,
-                           num_hiddens=num_hiddens,
-                           num_residual_hiddens=num_residual_hiddens,
-                           num_residual_layers=num_residual_layers,
-                           num_embeddings=num_embeddings,
-                           commitment_cost=commitment_cost,
-                           weight_matching=weight_matching,
-                           w_a=w_a,
-                           w_t=w_t,
-                           w_n=w_n,
-                           margin=margin,
-                           device=device).to(device)
-        model = train(model,
-                      dataset,
-                      output_dir=model_dir,
-                      relation_mat=relation_mat,
-                      mask=masks,
-                      n_epochs=n_epochs,
-                      lr=learn_rate,
-                      batch_size=batch_size,
-                      device=device,
-                      transform=True,
-                      val_split_ratio=val_split_ratio,
-                      patience=patience,
-                      )
+    os.makedirs(model_dir, exist_ok=True)
+    # SimCLR uses n_pos_samples=2
+    tri_train_set = TripletIterDataset(labels=train_labels,
+                                        data=train_set,
+                                        data_fn=lambda img: augment_img(img, intensity_jitter=intensity_jitter),
+                                        n_sample=n_pos_samples,
+                                        shuffle=True,
+                                        )
+    tri_val_set = TripletIterDataset(labels=val_labels,
+                                   data=val_set,
+                                   data_fn=lambda img: augment_img(img, intensity_jitter=intensity_jitter),
+                                   n_sample=n_pos_samples,
+                                     shuffle=False,
+
+                                     )
+    # Data Loader
+    train_loader = DataLoader(tri_train_set,
+                                batch_size=batch_size_adj,
+                                shuffle=False,
+                                num_workers=num_workers,
+                                pin_memory=True,
+                                worker_init_fn=worker_init_fn
+                                )
+    val_loader = DataLoader(tri_val_set,
+                              batch_size=batch_size_adj,
+                              shuffle=False,
+                              num_workers=num_workers,
+                              pin_memory=True,
+                              worker_init_fn=worker_init_fn)
+    print('loader length:', len(train_loader))
+    if loss == 'triplet':
+        loss_fn = AllTripletMiner(margin=margin).to(device)
+    elif loss == 'ntxent':
+        loss_fn = NTXent(tau=temperature).to(device)
     else:
-        train_set, train_labels, val_set, val_labels, df_meta_all = \
-            train_val_split_by_col(dataset, labels, df_meta_all, split_cols=['data_dir', 'FOV'], val_split_ratio=val_split_ratio, seed=0)
-        os.makedirs(model_dir, exist_ok=True)
-        meta_path = os.path.join(model_dir, 'patch_meta.csv')
-        df_meta_all.to_csv(meta_path, sep=',')
-        # SimCLR uses n_pos_samples=2
-        tri_train_set = TripletDataset(train_labels, lambda index: augment_img(train_set[index], intensity_jitter=intensity_jitter), n_pos_samples)
-        tri_val_set = TripletDataset(val_labels, lambda index: augment_img(val_set[index], intensity_jitter=intensity_jitter), n_pos_samples)
-        # Data Loader
-        train_loader = DataLoader(tri_train_set,
-                                    batch_size=batch_size_adj,
-                                    shuffle=True,
-                                    num_workers=num_workers,
-                                    pin_memory=False,
-                                    )
-        val_loader = DataLoader(tri_val_set,
-                                  batch_size=batch_size_adj,
-                                  shuffle=False,
-                                  num_workers=num_workers,
-                                  pin_memory=False,
-                                  )
-        if loss == 'triplet':
-            loss_fn = AllTripletMiner(margin=margin).to(device)
-        elif loss == 'ntxent':
-            loss_fn = NTXent(tau=temperature).to(device)
-        else:
-            raise ValueError('Loss name {} is not defined.'.format(loss))
+        raise ValueError('Loss name {} is not defined.'.format(loss))
 
-        # tri_loss = HardNegativeTripletMiner(margin=margin).to(device)
-        ## Initialize Model ###
+    # tri_loss = HardNegativeTripletMiner(margin=margin).to(device)
+    ## Initialize Model ###
 
-        model = EncodeProject(arch=network, loss=loss_fn, num_inputs=num_inputs, width=network_width).to(device)
+    model = EncodeProject(arch=network, loss=loss_fn, num_inputs=num_inputs, width=network_width).to(device)
 
-        if start_model_path:
-            print('Initialize the model with state {} ...'.format(start_model_path))
-            model.load_state_dict(t.load(start_model_path))
-        model = train_with_loader(model,
-                              train_loader=train_loader,
-                              val_loader=val_loader,
-                              output_dir=model_dir,
-                              n_epochs=n_epochs,
-                              lr=learn_rate,
-                              device=device,
-                              patience=patience,
-                              earlystop_metric=earlystop_metric,
-                              retrain=retrain,
-                              log_step_offset=start_epoch)
+    if start_model_path:
+        print('Initialize the model with state {} ...'.format(start_model_path))
+        model.load_state_dict(t.load(start_model_path))
+    model = train_with_loader(model,
+                          train_loader=train_loader,
+                          val_loader=val_loader,
+                          output_dir=model_dir,
+                          n_epochs=n_epochs,
+                          lr=learn_rate,
+                          device=device,
+                          patience=patience,
+                          earlystop_metric=earlystop_metric,
+                          retrain=retrain,
+                          log_step_offset=start_epoch)
 
 def parse_args():
 

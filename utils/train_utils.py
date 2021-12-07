@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 from sklearn.model_selection import GroupShuffleSplit
 
 
@@ -57,6 +58,13 @@ class EarlyStopping:
         torch.save(model.state_dict(), self.path)
         self.val_loss_min = val_loss
 
+class DataLoader(DataLoader):
+    """Override Pytorch 1.2 Dataloader's behavior of no __len__ for IterableDataset"""
+    def __init__(self, dataset, **kwargs):
+        super(DataLoader, self).__init__(dataset, **kwargs)
+
+    def __len__(self):
+        return np.ceil(len(self.dataset) / self.batch_size).astype(np.int64)
 
 def zscore(input_image, channel_mean=None, channel_std=None):
     """
@@ -168,6 +176,11 @@ def train_val_split_by_col(dataset, labels, df_meta, split_cols=None, val_split_
     df_meta.loc[val_ids, 'split'] = 'val'
     train_set = dataset[train_ids]
     train_labels = labels[train_ids]
+    train_set = train_set.rechunk((1, 2, 128, 128))
+    train_labels = train_labels.rechunk((len(train_labels),))
     val_set = dataset[val_ids]
     val_labels = labels[val_ids]
+    val_set = val_set.rechunk((1, 2, 128, 128))
+    val_labels = val_labels.rechunk((len(val_labels),))
+
     return train_set, train_labels, val_set, val_labels, df_meta

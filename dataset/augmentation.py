@@ -1,11 +1,10 @@
 import cv2
 import numpy as np
 from scipy import ndimage
-
+# import dask.delayed as delay
 from SingleCellPatch.patch_utils import cv2_fn_wrapper
-from run_training import unzscore
 
-
+# @delay
 def transform_matrix_offset_center(matrix, x, y):
     o_x = float(x) / 2 - 0.5
     o_y = float(y) / 2 - 0.5
@@ -14,7 +13,7 @@ def transform_matrix_offset_center(matrix, x, y):
     transform_matrix = np.dot(np.dot(offset_matrix, matrix), reset_matrix)
     return transform_matrix
 
-
+# @delay
 def apply_affine_transform(x, theta=0, tx=0, ty=0, shear=0, zx=1, zy=1,
                            row_axis=1, col_axis=2, channel_axis=0,
                            fill_mode='nearest', cval=0., order=1):
@@ -128,7 +127,7 @@ def apply_affine_transform(x, theta=0, tx=0, ty=0, shear=0, zx=1, zy=1,
         x = np.rollaxis(x, 0, channel_axis + 1)
     return x
 
-
+# @delay
 def random_crop(img, crop_ratio = (0.6, 1)):
     # Note: image_data_format is 'channel_first'
     height, width = img.shape[1], img.shape[2]
@@ -139,7 +138,7 @@ def random_crop(img, crop_ratio = (0.6, 1)):
     img = img[:, y:(y+dy), x:(x+dx)]
     return cv2_fn_wrapper(cv2.resize, img, (height, width))
 
-
+# @delay
 def random_intensity_jitter(img, mean_jitter, std_jitter):
     if mean_jitter == 0 and std_jitter == 0:
         return img
@@ -151,12 +150,13 @@ def random_intensity_jitter(img, mean_jitter, std_jitter):
         img_j.append(im)
     return np.stack(img_j)
 
-
+# @delay
 def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio = (0.6, 1), intensity_jitter=(0.5, 0.5)):
 # def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio=(0.6, 1), intensity_jitter=(0, 0)):
 # def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio=(1, 1), intensity_jitter=(0.5, 0.5)):
     """Data augmentation with flipping and rotation"""
     # TODO: Rewrite with torchvision transform
+    # img = np.asarray(img)
     img = random_intensity_jitter(img, intensity_jitter[0], intensity_jitter[1])
     if crop_ratio[0] != 1 or crop_ratio[1] != 1:
         img = random_crop(img, crop_ratio=crop_ratio)
@@ -170,3 +170,36 @@ def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio = (0.6, 1),
     # rot_idx = int(np.random.choice([0, 1, 2, 3]))
     # img = np.rot90(img, k=rot_idx, axes=(1, 2))
     return img
+
+# def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio = (0.6, 1), intensity_jitter=(0.5, 0.5)):
+# # def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio=(0.6, 1), intensity_jitter=(0, 0)):
+# # def augment_img(img, rotate_range=180, zoom_range=(1, 1), crop_ratio=(1, 1), intensity_jitter=(0.5, 0.5)):
+#     """Data augmentation with flipping and rotation"""
+#     # TODO: Rewrite with torchvision transform
+#     # img = np.array(img)
+#     # img = random_intensity_jitter(img, intensity_jitter[0], intensity_jitter[1])
+#     # if crop_ratio[0] != 1 or crop_ratio[1] != 1:
+#     #     img = random_crop(img, crop_ratio=crop_ratio)
+#     # flip_idx = np.random.choice([0, 1, 2])
+#     # if flip_idx != 0:
+#     #     img = np.flip(img, axis=flip_idx)
+#     # theta = np.random.uniform(-rotate_range, rotate_range)
+#     # zoom = np.random.uniform(zoom_range[0], zoom_range[1])
+#     # img = apply_affine_transform(img, zx=zoom, theta=theta,
+#     #                             zy=zoom, fill_mode='constant', cval=0., order=1)
+#     # # rot_idx = int(np.random.choice([0, 1, 2, 3]))
+#     # # img = np.rot90(img, k=rot_idx, axes=(1, 2))
+#     return img
+
+def unzscore(im_norm, mean, std):
+    """
+    Revert z-score normalization applied during preprocessing. Necessary
+    before computing SSIM
+
+    :param input_image: input image for un-zscore
+    :return: image at its original scale
+    """
+
+    im = im_norm * (std + np.finfo(float).eps) + mean
+
+    return im

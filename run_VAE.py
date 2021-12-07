@@ -1,4 +1,4 @@
-from utils.patch_VAE import assemble_VAE, process_VAE, trajectory_matching
+from utils.patch_VAE import assemble_VAE, process_VAE, trajectory_matching, pool_datasets
 from SingleCellPatch.patch_utils import get_im_sites
 from torch.multiprocessing import Pool, Queue, Process
 import torch.multiprocessing as mp
@@ -57,7 +57,8 @@ def main(method_, raw_dir_, supp_dir_, config_):
             raise AttributeError("raw directory must be specified when method = trajectory_matching")
         if not outputs:
             raise AttributeError("supplementary directory must be specified when method = trajectory_matching")
-
+    elif method == 'pool_datasets':
+        pool_datasets(config_)
     if config_.inference.fov:
         sites = config_.inference.fov
     else:
@@ -85,7 +86,7 @@ def parse_args():
         '-m', '--method',
         type=str,
         required=True,
-        choices=['assemble', 'process', 'trajectory_matching'],
+        choices=['assemble', 'process', 'trajectory_matching', 'pool_datasets'],
         default='assemble',
         help="Method: one of 'assemble', 'process' or 'trajectory_matching'",
     )

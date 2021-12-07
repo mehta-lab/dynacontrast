@@ -1,4 +1,7 @@
 import os
+
+from dask import array as da
+
 os.environ['KERAS_BACKEND'] = 'tensorflow'
 import pickle
 import torch
@@ -7,6 +10,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import importlib
 import inspect
+import time
 from configs.config_reader import YamlReader
 from torch.utils.data import TensorDataset, DataLoader
 from tqdm import tqdm
@@ -14,12 +18,11 @@ import zarr
 from SingleCellPatch.extract_patches import process_site_extract_patches
 from SingleCellPatch.patch_utils import im_adjust
 from SingleCellPatch.generate_trajectories import process_site_build_trajectory, process_well_generate_trajectory_relations
-
-from utils.train_utils import zscore, zscore_patch
+from utils.train_utils import zscore, zscore_patch, train_val_split_by_col
 from dataset.dataset import ImageDataset
 import HiddenStateExtractor.vae as vae
 import HiddenStateExtractor.resnet as resnet
-from HiddenStateExtractor.vq_vae_supp import assemble_patches, prepare_dataset_v2
+from HiddenStateExtractor.vq_vae_supp import assemble_patches
 
 NETWORK_MODULE = 'run_training'
 
@@ -173,6 +176,11 @@ def assemble_VAE(raw_folder: str,
     df_meta.to_csv(meta_path, sep=',')
     dataset = assemble_patches(df_meta, supp_folder, channels=channels, key=patch_type)
     assert len(dataset) == len(df_meta), 'Number of patches and rows in metadata are not consistent.'
+    dataset = zscore(dataset, channel_mean=None, channel_std=None).astype(np.float32)
+    output_fname = os.path.join(raw_folder, 'cell_patches_datasetnorm.zarr')
+    print('saving {}...'.format(output_fname))
+    zarr.save(output_fname, dataset)
+    dataset = zscore_patch(dataset).astype(np.float32)
     output_fname = os.path.join(raw_folder, 'cell_patches.zarr')
     print('saving {}...'.format(output_fname))
     zarr.save(output_fname, dataset)
@@ -188,7 +196,7 @@ def assemble_VAE(raw_folder: str,
     return
 
 
-def combine_dataset(input_dataset_names, output_dataset_name, save_mask=True):
+def pool_datasets(config):
     """ Combine multiple datasets
 
     Args:
@@ -204,66 +212,63 @@ def combine_dataset(input_dataset_names, output_dataset_name, save_mask=True):
         save_mask (bool, optional): if to read & save dataset mask
 
     """
-
-    separate_fs = []
-    separate_dataset = []
-    separate_dataset_mask = []
-    separate_relations = []
-
-    for n in input_dataset_names:
-        assert os.path.exists(n + '_file_paths.pkl')
-        assert os.path.exists(n + '_static_patches.pkl')
-        assert os.path.exists(n + '_static_patches_relations.pkl')
-        separate_fs.append(pickle.load(open(n + '_file_paths.pkl', 'rb')))
-        separate_dataset.append(pickle.load(open(n + '_static_patches.pkl', 'rb')))
-        separate_relations.append(pickle.load(open(n + '_static_patches_relations.pkl', 'rb')))
-        if save_mask:
-            assert os.path.exists(n + '_static_patches_mask.pkl')
-            separate_dataset_mask.append(pickle.load(open(n + '_static_patches_mask.pkl', 'rb')))
-        else:
-            separate_dataset_mask.append([None] * len(separate_fs[-1]))
-
-    all_fs = sorted(sum(separate_fs, []))
-    assert len(all_fs) == len(set(all_fs)), "Found patches with identical name"
-    with open(output_dataset_name + '_file_paths.pkl', 'wb') as f:
-        pickle.dump(all_fs, f)
-
-    separate_name_to_idx = {}
-    for i, dataset_f in enumerate(separate_fs):
-        for j, n in enumerate(dataset_f):
-            separate_name_to_idx[n] = (i, j)
-
-    combined_name_to_idx = {}
-    for i, n in enumerate(all_fs):
-        combined_name_to_idx[n] = i
-
-    all_dataset = []
-    all_dataset_mask = []
-    for n in all_fs:
-        i, j = separate_name_to_idx[n]
-        all_dataset.append(separate_dataset[i][j])
-        all_dataset_mask.append(separate_dataset_mask[i][j])
-
-    all_dataset = np.stack(all_dataset, 0)
-    with open(output_dataset_name + '_static_patches.pkl', 'wb') as f:
-        pickle.dump(all_dataset, f, protocol=4)
-
-    if save_mask:
-        all_dataset_mask = np.stack(all_dataset_mask, 0)
-        with open(output_dataset_name + '_static_patches_mask.pkl', 'wb') as f:
-            pickle.dump(all_dataset_mask, f, protocol=4)
-
-    all_relations = {}
-    for fs, relation in zip(separate_fs, separate_relations):
-        for k in relation:
-            name1 = fs[k[0]]
-            name2 = fs[k[1]]
-            all_relations[(combined_name_to_idx[name1],
-                           combined_name_to_idx[name2])] = relation[k]
-
-    with open(output_dataset_name + '_static_patches_relations.pkl', 'wb') as f:
-        pickle.dump(all_relations, f)
-
+    raw_dirs = config.data_pooling.raw_dirs
+    supp_dirs = config.data_pooling.supp_dirs
+    dst_dir = config.data_pooling.dst_dir
+    val_split_ratio = config.training.val_split_ratio
+    fname_suffix = ['', '_datasetnorm']
+    labels = []
+    id_offsets = [0]
+    df_meta_all = []
+    for raw_dir, supp_dir in zip(raw_dirs, supp_dirs):
+        label = da.from_zarr(os.path.join(raw_dir, 'patch_labels.zarr')).astype(np.int64)
+        labels.append(label)
+        meta_path = os.path.join(supp_dir, 'im-supps', 'patch_meta.csv')
+        df_meta = pd.read_csv(meta_path, index_col=0, converters={
+            'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
+        df_meta['data_dir'] = os.path.dirname(raw_dir)
+        df_meta_all.append(df_meta)
+        id_offsets.append(len(label))
+    df_meta_all = pd.concat(df_meta_all, axis=0)
+    df_meta_all.reset_index(drop=True, inplace=True)
+    id_offsets = id_offsets[:-1]
+    labels = concat_relations(labels, offsets=id_offsets)
+    print('len(labels):', len(labels))
+    for suffix in fname_suffix:
+        # datasets = None
+        datasets = []
+        for raw_dir, supp_dir in zip(raw_dirs, supp_dirs):
+            os.makedirs(dst_dir, exist_ok=True)
+            data_path = os.path.join(raw_dir, 'cell_patches' + suffix + '.zarr')
+            t0 = time.time()
+            dataset = da.from_zarr(data_path)
+            datasets.append(dataset)
+            t1 = time.time()
+            print('loading dataset takes:', t1 - t0)
+            print('dataset.shape:', dataset.shape)
+        dataset = da.concatenate(datasets, axis=0)
+        print('len(dataset):', len(dataset))
+        # dataset = da.from_zarr(os.path.join(dst_dir, patch_fname))
+        t0 = time.time()
+        train_set, train_labels, val_set, val_labels, df_meta_all_split = \
+            train_val_split_by_col(dataset, labels, df_meta_all, split_cols=['data_dir', 'FOV'],
+                                   val_split_ratio=val_split_ratio, seed=0)
+        t1 = time.time()
+        print('splitting dataset takes:', t1 - t0)
+        t0 = time.time()
+        da.to_zarr(train_set, os.path.join(dst_dir, 'cell_patches' + suffix + '_train.zarr'), overwrite=True, compressor='default')
+        da.to_zarr(val_set, os.path.join(dst_dir, 'cell_patches' + suffix + '_val.zarr'), overwrite=True, compressor='default')
+        da.to_zarr(train_labels, os.path.join(dst_dir, 'patch_labels' + suffix + '_train.zarr'), overwrite=True, compressor='default')
+        da.to_zarr(val_labels, os.path.join(dst_dir, 'patch_labels' + suffix + '_val.zarr'), overwrite=True, compressor='default')
+        train_labels = np.asarray(train_labels)
+        val_labels = np.asarray(val_labels)
+        with open(os.path.join(dst_dir, 'patch_labels' + suffix + '_train.npy'), 'wb') as f:
+            np.save(f, train_labels)
+        with open(os.path.join(dst_dir, 'patch_labels' + suffix + '_val.npy'), 'wb') as f:
+            np.save(f, val_labels)
+        t1 = time.time()
+        print('writing dataset takes:', t1 - t0)
+        df_meta_all_split.to_csv(os.path.join(dst_dir, 'patch_meta' + suffix + '.csv'), sep=',')
     return
 
 
@@ -430,8 +435,6 @@ def process_VAE(raw_folder: str,
         dataset = zscore_patch(np.squeeze(dataset)).astype(np.float32)
     else:
         raise ValueError('Parameter "normalization" must be "dataset" or "patch"')
-    # dataset = zscore(np.squeeze(dataset), channel_mean=channel_mean, channel_std=channel_std)
-    # dataset = zscore_patch(np.squeeze(dataset))
     dataset = TensorDataset(torch.from_numpy(dataset).float())
     assert len(dataset.tensors[0].shape) == 4, "dataset tensor dimension can only be 4, not {}".format(len(dataset.tensors[0].shape))
     _, n_channels, x_size, y_size = dataset.tensors[0].shape
@@ -524,5 +527,20 @@ def process_VAE(raw_folder: str,
         raise ValueError('Network {} is not available'.format(network))
 
 
+def concat_relations(labels, offsets):
+    """combine relation dictionaries from multiple datasets
 
+    Args:
+        labels (list): list of label array to combine
+        offsets (list): offset to add to the indices
 
+    Returns: new_labels (array): dictionary of combined labels
+
+    """
+    new_labels = []
+    for label, offset in zip(labels, offsets):
+        new_label = label + offset
+        # make a new dict with updated keys
+        new_labels.append(new_label)
+    new_labels = da.concatenate(new_labels, axis=0)
+    return new_labels
