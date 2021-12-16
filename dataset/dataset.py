@@ -4,17 +4,26 @@ from dask.array.slicing import shuffle_slice
 import math
 import numpy as np
 import torch
+import random
 import zarr
 from torch.utils.data import Dataset, IterableDataset
 
 def worker_init_fn(worker_id):
     worker_info = torch.utils.data.get_worker_info()
+    worker_id = worker_info.id
+    # Pytorch seeds each worker in DataLoader with seed + worker_id.
+    # Here we want to ensure each worker has the same random seed but change after every epoch
+    # So each worker reads different part of the dataset in each epoch but the data are randomized after every epoch
+    worker_seed = (torch.initial_seed() - worker_id) % 2 ** 32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
     dataset = worker_info.dataset  # the dataset copy in this worker process
     overall_start = 0
     overall_end = len(dataset)
     # configure the dataset to only process the split workload
     per_worker = int(math.ceil((overall_end - overall_start) / float(worker_info.num_workers)))
-    worker_id = worker_info.id
+
     dataset.start = overall_start + worker_id * per_worker
     dataset.end = min(dataset.start + per_worker, overall_end)
 
@@ -183,10 +192,12 @@ class TripletIterDataset(IterableDataset):
         self.data = data
         self.data_fn = data_fn
         self.size = len(labels)
+        # self.size = 50
         self.n_sample = n_sample
         self.shuffle = shuffle
         self.start = 0
         self.end = len(labels)
+        # self.end = 50
 
     def __len__(self: 'TripletIterDataset') -> int:
         """Len
@@ -220,12 +231,12 @@ class TripletIterDataset(IterableDataset):
         """
 
         shuffle_ind = np.array(list(range(self.size)))
-        if self.shuffle:
-            np.random.shuffle(shuffle_ind)
         for index in range(self.start, self.end):
+            # shuffle after every epoch for randomness
+            if index ==  self.start and self.shuffle:
+                np.random.shuffle(shuffle_ind)
             label = np.array([self.labels[shuffle_ind[index]]])
             datum = np.array([self.data_fn(self.data[shuffle_ind[index]])])
-
             if self.n_sample == 1:
                 return label, datum
 
@@ -241,6 +252,7 @@ class TripletIterDataset(IterableDataset):
             data = torch.from_numpy(data)
 
             yield labels, data
+
 
 class ImageDataset(Dataset):
     """Basic dataset class without labels for inference

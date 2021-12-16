@@ -73,7 +73,7 @@ def assemble_patches(df_meta,
                                        (df_meta['time'] == t) &
                                        (df_meta['slice'] == z), 'cell ID'].to_list()
                 stack_path_site = os.path.join(supp_files_folder, 'stacks_t{}_z{}.pkl'.format(t, z))
-                # print(f"\tloading data {stack_path_site}")
+                print(f"\tloading data {stack_path_site}")
                 with open(stack_path_site, 'rb') as f:
                     stack_dict = pickle.load(f)
                 for cell_id in cell_ids:
@@ -87,72 +87,6 @@ def assemble_patches(df_meta,
                     dataset.append(resized_dat)
     dataset = np.stack(dataset)
     return dataset
-
-def reorder_with_trajectories(dataset, relations, seed=None, w_a=1.1, w_t=0.1):
-    """ Reorder `dataset` to facilitate training with matching loss
-
-    Args:
-        dataset (TensorDataset): dataset of training inputs
-        relations (dict): dict of pairwise relationship (adjacent frames, same 
-            trajectory)
-        seed (int or None, optional): if given, random seed
-        w_a (float): weight for adjacent frames
-        w_t (float): weight for non-adjecent frames in the same trajectory
-
-    Returns:
-        TensorDataset: dataset of training inputs (after reordering)
-        scipy csr matrix: sparse matrix of pairwise relations
-        list of int: index of samples used for reordering
-
-    """
-    if not seed is None:
-        np.random.seed(seed)
-    inds_pool = set(range(len(dataset)))
-    inds_in_order = []
-    relation_dict = {}
-    for pair in relations:
-        if relations[pair] == 2: # Adjacent pairs
-            if pair[0] not in relation_dict:
-                relation_dict[pair[0]] = []
-            relation_dict[pair[0]].append(pair[1])
-    while len(inds_pool) > 0:
-        rand_ind = np.random.choice(list(inds_pool))
-        if not rand_ind in relation_dict:
-            inds_in_order.append(rand_ind)
-            inds_pool.remove(rand_ind)
-        else:
-            traj = [rand_ind]
-            q = queue.Queue()
-            q.put(rand_ind)
-            while True:
-                try:
-                    elem = q.get_nowait()
-                except queue.Empty:
-                    break
-                new_elems = relation_dict[elem]
-                for e in new_elems:
-                    if not e in traj:
-                        traj.append(e)
-                        q.put(e)
-            inds_in_order.extend(traj)
-            for e in traj:
-                inds_pool.remove(e)
-    new_tensor = dataset[np.array(inds_in_order)]
-    
-    values = []
-    new_relations = []
-    for k, v in relations.items():
-        # 2 - adjacent, 1 - same trajectory
-        if v == 1:
-            values.append(w_t)
-        elif v == 2:
-            values.append(w_a)
-        new_relations.append(k)
-    new_relations = np.array(new_relations)
-    relation_mat = csr_matrix((np.array(values), (new_relations[:, 0], new_relations[:, 1])),
-                              shape=(len(dataset), len(dataset)))
-    relation_mat = relation_mat[np.array(inds_in_order)][:, np.array(inds_in_order)]
-    return new_tensor, relation_mat, inds_in_order
 
 def train(model, 
           dataset, 

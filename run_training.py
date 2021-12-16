@@ -27,71 +27,6 @@ import queue
 dask.config.set(scheduler='synchronous')
 blosc.use_threads = True
 
-def reorder_with_trajectories(dataset, relations, seed=None):
-    """ Reorder `dataset` to facilitate training with matching loss
-
-    Args:
-        dataset (TensorDataset): dataset of training inputs
-        relations (dict): dict of pairwise relationship (adjacent frames, same 
-            trajectory)
-        seed (int or None, optional): if given, random seed
-
-    Returns:
-        TensorDataset: dataset of training inputs (after reordering)
-        scipy csr matrix: sparse matrix of pairwise relations
-        list of int: index of samples used for reordering
-
-    """
-    if not seed is None:
-        np.random.seed(seed)
-    inds_pool = set(range(len(dataset)))
-    inds_in_order = []
-    relation_dict = {}
-    for pair in relations:
-        if relations[pair] == 2: # Adjacent pairs
-            if pair[0] not in relation_dict:
-                relation_dict[pair[0]] = []
-            relation_dict[pair[0]].append(pair[1])
-    while len(inds_pool) > 0:
-        rand_ind = np.random.choice(list(inds_pool))
-        if not rand_ind in relation_dict:
-            inds_in_order.append(rand_ind)
-            inds_pool.remove(rand_ind)
-        else:
-            traj = [rand_ind]
-            q = queue.Queue()
-            q.put(rand_ind)
-            while True:
-                try:
-                    elem = q.get_nowait()
-                except queue.Empty:
-                    break
-                new_elems = relation_dict[elem]
-                for e in new_elems:
-                    if not e in traj:
-                        traj.append(e)
-                        q.put(e)
-            inds_in_order.extend(traj)
-            for e in traj:
-                inds_pool.remove(e)
-    new_tensor = dataset.tensors[0][np.array(inds_in_order)]
-    
-    values = []
-    new_relations = []
-    for k, v in relations.items():
-        # 2 - adjacent, 1 - same trajectory
-        if v == 1:
-            values.append(1)
-        elif v == 2:
-            values.append(2)
-        new_relations.append(k)
-    new_relations = np.array(new_relations)
-    relation_mat = csr_matrix((np.array(values), (new_relations[:, 0], new_relations[:, 1])),
-                              shape=(len(dataset), len(dataset)))
-    relation_mat = relation_mat[np.array(inds_in_order)][:, np.array(inds_in_order)]
-    return TensorDataset(new_tensor), relation_mat, inds_in_order
-
-
 def get_relation_tensor(relation_mat, sample_ids, device='cuda:0'):
     """
     Slice relation matrix according to sample_ids; convert to torch tensor
@@ -175,106 +110,6 @@ def run_one_batch(model, batch, train_loss, model_kwargs = None, optimizer=None,
     # print(train_loss_dict)
     del batch, train_loss_dict
     return model, train_loss
-
-
-def train(model, dataset, output_dir, relation_mat=None, mask=None,
-          n_epochs=10, lr=0.001, batch_size=16, device='cuda:0', shuffle_data=False,
-          transform=None, val_split_ratio=0.15, patience=20):
-    """ Legacy train function for VAE models.
-
-    Args:
-        model (nn.Module): autoencoder model
-        dataset (TensorDataset): dataset of training inputs
-        relation_mat (scipy csr matrix or None, optional): if given, sparse
-            matrix of pairwise relations
-        mask (TensorDataset or None, optional): if given, dataset of training
-            sample weight masks
-        n_epochs (int, optional): number of epochs
-        lr (float, optional): learning rate
-        batch_size (int, optional): batch size
-        device (str): device to run the model on
-        shuffle_data (bool): shuffle data at the end of the epoch to add randomness to mini-batch.
-            Set False when using matching loss
-        transform (bool): data augmentation if true
-        val_split_ratio (float or None): fraction of the dataset used for validation
-        patience (int or None): Number of epochs to wait before stopping training if validation loss does not improve.
-
-    Returns:
-        nn.Module: trained model
-
-    """
-    assert val_split_ratio is None or 0 < val_split_ratio < 1
-    # early stopping requires validation set
-    if patience is not None:
-        assert val_split_ratio is not None
-    optimizer = t.optim.Adam(model.parameters(), lr=lr, betas=(.9, .999))
-    model.zero_grad()
-    n_samples = len(dataset)
-    # Declare sample indices and do an initial shuffle
-    sample_ids = list(range(n_samples))
-    split = int(np.floor(val_split_ratio * n_samples))
-    # randomly choose the split start
-    split_start = np.random.randint(0, n_samples - split)
-    if shuffle_data:
-        np.random.shuffle(sample_ids)
-    val_ids = sample_ids[split_start: split_start + split]
-    train_ids = sample_ids[:split_start] + sample_ids[split_start + split:]
-    n_train = len(train_ids)
-    n_val = len(val_ids)
-    n_batches = int(np.ceil(n_train / batch_size))
-    n_val_batches = int(np.ceil(n_val / batch_size))
-    writer = SummaryWriter(output_dir)
-    model_path = os.path.join(output_dir, 'model.pt')
-    early_stopping = EarlyStopping(patience=patience, verbose=True, path=model_path)
-    for epoch in range(n_epochs):
-        train_loss = {}
-        val_loss = {}
-        print('start epoch %d' % epoch)
-        # loop through training batches
-        for i in range(n_batches):
-            # deal with last batch might < batch size
-            train_ids_batch = train_ids[i * batch_size:min((i + 1) * batch_size, n_train)]
-            batch = dataset[train_ids_batch][0].to(device)
-            # Relation (adjacent frame, same trajectory)
-            batch_relation_mat = get_relation_tensor(relation_mat, train_ids_batch, device=device)
-            # Reconstruction mask
-            batch_mask = get_mask(mask, train_ids_batch, device=device)
-            model, train_loss = \
-                run_one_batch(model, batch, train_loss, optimizer=optimizer,
-                              model_kwargs={'time_matching_mat': batch_relation_mat,
-                              'batch_mask': batch_mask}, transform=transform, training=True)
-        # loop through validation batches
-        for i in range(n_val_batches):
-            val_ids_batch = val_ids[i * batch_size:min((i + 1) * batch_size, n_val)]
-            batch = dataset[val_ids_batch][0].to(device)
-            # Relation (adjacent frame, same trajectory)
-            batch_relation_mat = get_relation_tensor(relation_mat, val_ids_batch, device=device)
-            # Reconstruction mask
-            batch_mask = get_mask(mask, val_ids_batch, device)
-            model, val_loss = \
-                run_one_batch(model, batch, val_loss, optimizer=optimizer,
-                              model_kwargs={'time_matching_mat': batch_relation_mat,
-                                            'batch_mask': batch_mask}, transform=transform, training=False)
-        # shuffle train ids at the end of the epoch
-        if shuffle_data:
-            np.random.shuffle(train_ids)
-        for key, loss in train_loss.items():
-            train_loss[key] = sum(loss) / len(loss)
-            writer.add_scalar('Loss/' + key, train_loss[key], epoch)
-        for key, loss in val_loss.items():
-            val_loss[key] = sum(loss) / len(loss)
-            writer.add_scalar('Val loss/' + key, val_loss[key], epoch)
-        early_stopping(val_loss['total_loss'], model)
-        if early_stopping.early_stop:
-            print("Early stopping")
-            break
-        writer.flush()
-        print('epoch %d' % epoch)
-        print('train: ', ''.join(['{}:{:0.4f}  '.format(key, loss) for key, loss in train_loss.items()]))
-        print('validation: ', ''.join(['{}:{:0.4f}  '.format(key, loss) for key, loss in val_loss.items()]))
-    writer.close()
-    return model
-
 
 def train_with_loader(model, train_loader, val_loader, output_dir,
           n_epochs=10, lr=0.001, device='cuda:0',
@@ -446,7 +281,7 @@ def main(config_):
                                    data=val_set,
                                    data_fn=lambda img: augment_img(img, intensity_jitter=intensity_jitter),
                                    n_sample=n_pos_samples,
-                                     shuffle=False,
+                                     shuffle=True,
 
                                      )
     # Data Loader
