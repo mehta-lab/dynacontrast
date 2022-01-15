@@ -70,7 +70,7 @@ def get_mask(mask, sample_ids, device='cuda:0'):
 
 
 def run_one_batch(model, batch, train_loss, model_kwargs = None, optimizer=None,
-                transform=False, training=True):
+                training=True):
     """ Train on a single batch of data
     Args:
         model (nn.Module): pytorch model object
@@ -80,7 +80,6 @@ def run_one_batch(model, batch, train_loss, model_kwargs = None, optimizer=None,
         batch_relation_mat (np array or None): matrix of pairwise relations
         batch_mask (TensorDataset or None): if given, dataset of training
             sample weight masks
-        transform (bool): data augmentation if true
         training (bool): Set True for training and False for validation (no weights update)
 
     Returns:
@@ -88,14 +87,6 @@ def run_one_batch(model, batch, train_loss, model_kwargs = None, optimizer=None,
         train_loss (dict): updated batch-wise training or validation loss
 
     """
-    if transform:
-        for idx_in_batch in range(len(batch)):
-            img = batch[idx_in_batch]
-            flip_idx = np.random.choice([0, 1, 2])
-            if flip_idx != 0:
-                img = t.flip(img, dims=(flip_idx,))
-            rot_idx = int(np.random.choice([0, 1, 2, 3]))
-            batch[idx_in_batch] = t.rot90(img, k=rot_idx, dims=[1, 2])
     _, train_loss_dict = model(batch, **model_kwargs)
     if training:
         train_loss_dict['total_loss'].backward()
@@ -198,10 +189,6 @@ def main(config_):
     config.read_config(config_)
 
     # Settings
-    # estimate mean and std from the data
-    channel_mean = config.training.channel_mean
-    channel_std = config.training.channel_std
-
     raw_dir = config.training.raw_dir
     train_dir = config.training.weights_dir
     # supp_dirs = config.training.supp_dirs
@@ -221,7 +208,6 @@ def main(config_):
     num_workers = config.training.num_workers
     n_epochs = config.training.n_epochs
     gpu_id = config.training.gpu_id
-    # earlystop_metric = 'total_loss'
     retrain = config.training.retrain
     earlystop_metric = 'positive_triplet'
     model_name = config.training.model_name
@@ -262,9 +248,6 @@ def main(config_):
     print('loading dataset takes:', t1 - t0)
     print('train dataset.shape:', train_set.shape)
     print('val dataset.shape:', val_set.shape)
-    # PyTorch 1.2 can't detect length of IterableDataset
-    n_batch_train = np.ceil(len(train_labels) / batch_size_adj)
-    n_batch_val = np.ceil(len(val_labels) / batch_size_adj)
     # treat every patch as different
     # labels = np.arange(len(labels))
     # Save the model in the train directory of the last dataset
