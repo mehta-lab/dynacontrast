@@ -358,13 +358,13 @@ def import_object(module_name, obj_name, obj_type='class'):
     except ImportError:
         raise
 
-def process_VAE(raw_dir: str,
-                supp_folder: str,
-                sites: list,
-                config_: YamlReader,
-                gpu: int=0,
-                **kwargs):
-    """ Wrapper method for VAE encoding
+def encode_patches(raw_dir: str,
+                   supp_folder: str,
+                   sites: list,
+                   config_: YamlReader,
+                   gpu: int=0,
+                   **kwargs):
+    """ Wrapper method for patch encoding
 
     This function loads prepared dataset and applies trained VAE to encode 
     static patches for each well. 
