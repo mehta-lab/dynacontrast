@@ -1,28 +1,27 @@
 import os
 
+import cv2
 from dask import array as da
+
+from SingleCellPatch.patch_utils import cv2_fn_wrapper
 
 os.environ['KERAS_BACKEND'] = 'tensorflow'
 import pickle
 import torch
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import importlib
 import inspect
 import time
-from configs.config_reader import YamlReader
-from torch.utils.data import TensorDataset, DataLoader
+from utils.config_reader import YamlReader
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 import zarr
 from SingleCellPatch.extract_patches import process_site_extract_patches
-from SingleCellPatch.patch_utils import im_adjust
 from SingleCellPatch.generate_trajectories import process_site_build_trajectory, process_well_generate_trajectory_relations
 from utils.train_utils import zscore, zscore_patch, train_val_split_by_col
 from dataset.dataset import ImageDataset
 import HiddenStateExtractor.resnet as resnet
-from HiddenStateExtractor.vq_vae_supp import assemble_patches
-
 
 NETWORK_MODULE = 'run_training'
 
@@ -343,7 +342,7 @@ def import_object(module_name, obj_name, obj_type='class'):
     :param str obj_type: Object type (class or function)
     """
 
-    # full_module_name = ".".join(('dynamorph', module_name))
+    # full_module_name = ".".join(('dynacontrast', module_name))
     full_module_name = module_name
     try:
         module = importlib.import_module(full_module_name)
@@ -405,8 +404,8 @@ def encode_patches(raw_dir: str,
         train_set = zarr.open(os.path.join(raw_dir, 'cell_patches_datasetnorm_train.zarr'))
         val_set = zarr.open(os.path.join(raw_dir, 'cell_patches_datasetnorm_val.zarr'))
     elif normalization == 'patch':
-        train_set_sync = zarr.ProcessSynchronizer(os.path.join(raw_dir, 'cell_patches_train.sync'))
-        train_set = zarr.open(os.path.join(raw_dir, 'cell_patches_train.zarr'), synchronizer=train_set_sync)
+        # train_set_sync = zarr.ProcessSynchronizer(os.path.join(raw_dir, 'cell_patches_train.sync'))
+        train_set = zarr.open(os.path.join(raw_dir, 'cell_patches_train.zarr'))
         val_set = zarr.open(os.path.join(raw_dir, 'cell_patches_val.zarr'))
     else:
         raise ValueError('Parameter "normalization" must be "dataset" or "patch"')
@@ -464,3 +463,51 @@ def concat_relations(labels, offsets):
         new_labels.append(new_label)
     new_labels = da.concatenate(new_labels, axis=0)
     return new_labels
+
+
+def assemble_patches(df_meta,
+                     supp_folder,
+                     channels=None,
+                     input_shape=(128, 128),
+                     key='masked_mat'):
+    """ Prepare input dataset for VAE
+
+    This function reads assembled pickle files (dict)
+
+    Args:
+        stack_paths (list of str): list of pickle file paths
+        channels (list of int, optional): channels in the input
+        input_shape (tuple, optional): input shape (height and width only)
+        key (str): 'mat' or 'masked_mat'
+
+    Returns:
+        np array: dataset of training inputs
+        list of str: identifiers of single cell image patches
+
+    """
+    dataset = []
+    sites = df_meta['FOV'].unique()
+    t_points = df_meta['time'].unique()
+    slices = df_meta['slice'].unique()
+    for site in sites:
+        supp_files_folder = os.path.join(supp_folder, '%s-supps' % site[:2], '%s' % site)
+        for t in t_points:
+            for z in slices:
+                cell_ids = df_meta.loc[(df_meta['FOV'] == site) &
+                                       (df_meta['time'] == t) &
+                                       (df_meta['slice'] == z), 'cell ID'].to_list()
+                stack_path_site = os.path.join(supp_files_folder, 'stacks_t{}_z{}.pkl'.format(t, z))
+                print(f"\tloading data {stack_path_site}")
+                with open(stack_path_site, 'rb') as f:
+                    stack_dict = pickle.load(f)
+                for cell_id in cell_ids:
+                    patch_key = os.path.join(supp_files_folder, 't{}_z{}_cell{}'.format(t, z, cell_id))
+                    # patch_key = 't{}_z{}_cell{}'.format(t, z, cell_id)
+                    dat = stack_dict[patch_key][key]
+                    if channels is None:
+                        channels = np.arange(dat.shape[0])
+                    dat = np.array(dat)[np.array(channels)].astype(float)
+                    resized_dat = cv2_fn_wrapper(cv2.resize, dat, input_shape)
+                    dataset.append(resized_dat)
+    dataset = np.stack(dataset)
+    return dataset

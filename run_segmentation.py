@@ -10,7 +10,7 @@ import logging
 log = logging.getLogger(__name__)
 
 import argparse
-from configs.config_reader import YamlReader
+from utils.config_reader import YamlReader
 
 
 class Worker(Process):

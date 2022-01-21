@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import dask.array as da
 import imageio
-from configs.config_reader import YamlReader
+from utils.config_reader import YamlReader
 from SingleCellPatch.patch_utils import im_adjust
 
 def save_single_cell_movie(config, raw_dir, supp_dir):

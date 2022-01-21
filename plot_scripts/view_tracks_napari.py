@@ -2,18 +2,9 @@ import argparse
 import os
 import numpy as np
 import pandas as pd
-from configs.config_reader import YamlReader
+from utils.config_reader import YamlReader
 import napari
-from napari_animation import AnimationWidget
-
-
-
-def lissajous(t):
-    a = np.random.random(size=(3,)) * 80.0 - 40.0
-    b = np.random.random(size=(3,)) * 0.05
-    c = np.random.random(size=(3,)) * 0.1
-    return (a[i] * np.cos(b[i] * t + c[i]) for i in range(3))
-
+from napari_animation import Animation
 
 def tracks_2d(df_meta_fov):
     """ convert dynacontrast metadata to napari track format """
@@ -53,15 +44,35 @@ def view_tracks(config, raw_dir, supp_dir, fovs, slice_ids):
     meta_path = os.path.join(supp_dir, 'im-supps', 'patch_meta.csv')
     df_meta = pd.read_csv(meta_path, index_col=0, converters={
         'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
+    output_dir = os.path.join(supp_dir, 'movies', 'tracks')
+    os.makedirs(output_dir, exist_ok=True)
+    tol = 1
     for fov in fovs:
         df_meta_fov = df_meta[(df_meta['FOV'] == fov) & (df_meta['slice'].isin(slice_ids))]
         tracks, properties, graph = tracks_2d(df_meta_fov)
+        tracks[:, 2] = 0 # set z=0
         vertices = tracks[:, 1:]
-        viewer = napari.Viewer()
-        viewer.add_points(vertices, size=1, name='points', opacity=0.3)
-        viewer.add_tracks(tracks, properties=properties, name='tracks')
-        animation_widget = AnimationWidget(viewer)
-        viewer.window.add_dock_widget(animation_widget, area='right')
+        viewer = napari.view_points(vertices, size=1, name='points', opacity=0.3)
+        img = np.load(os.path.join(raw_dir, fov + '.npy'))
+        viewer.add_tracks(tracks, properties=properties, name='tracks', colormap='turbo', tail_length=len(img))
+        limit = [-0.06, 0.09]
+        viewer.add_image(img[:, 0:1, 2:3,...], channel_axis=1, colormap='gray', gamma=2, contrast_limits=limit)
+        seg_map = np.load(os.path.join(raw_dir, fov + '_NNProbabilities.npy'))
+        limit = [0, np.max(seg_map)]
+        viewer.add_image(seg_map[:, 0:1, 2:3,...], channel_axis=1, colormap='gist_earth', contrast_limits=limit)
+        # animation_widget = AnimationWidget(viewer)
+        # viewer.window.add_dock_widget(animation_widget, area='right')
+        animation = Animation(viewer)
+        viewer.dims.set_current_step(0, 0)
+        animation.capture_keyframe()
+        viewer.dims.set_current_step(0, len(img) - 1)
+        animation.capture_keyframe(steps=len(img) - 1)
+        animation.animate(os.path.join(output_dir, 'track_{}.mov'.format(fov)),
+                          canvas_only=True,
+                          fps=4,
+                          quality=9,
+                          scale_factor=2)
+
 
         napari.run()
 

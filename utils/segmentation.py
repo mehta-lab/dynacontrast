@@ -4,11 +4,10 @@ import os
 import numpy as np
 import pandas as pd
 # from NNsegmentation.models import Segment
-from NNsegmentation.data import load_input, predict_whole_map
+from NNsegmentation.data import predict_whole_map
 # from keras import backend as K
-import tensorflow as tf
 from SingleCellPatch.instance_clustering import process_site_instance_segmentation
-from configs.config_reader import YamlReader
+from utils.config_reader import YamlReader
 import logging
 log = logging.getLogger(__name__)
 

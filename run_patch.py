@@ -2,11 +2,11 @@
 
 from utils.patch_VAE import extract_patches, build_trajectories
 from SingleCellPatch.patch_utils import get_im_sites
-from multiprocessing import Pool, Queue, Process
+from multiprocessing import Process
 import os
 import numpy as np
 import argparse
-from configs.config_reader import YamlReader
+from utils.config_reader import YamlReader
 
 
 class Worker(Process):

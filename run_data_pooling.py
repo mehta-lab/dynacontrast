@@ -1,6 +1,6 @@
 from utils.patch_VAE import pool_datasets
 import argparse
-from configs.config_reader import YamlReader
+from utils.config_reader import YamlReader
 
 def main():
     arguments = parse_args()

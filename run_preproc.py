@@ -8,10 +8,9 @@
 from utils.preprocess import write_raw_to_npy
 import os
 import fnmatch
-import re
 
 import argparse
-from configs.config_reader import YamlReader
+from utils.config_reader import YamlReader
 import logging
 log = logging.getLogger(__name__)
 

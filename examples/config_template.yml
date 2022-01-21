@@ -46,7 +46,7 @@ segmentation_inference:
   ]
 
   model: 'UNet'
-  # only UNet was implemented for the dynamorph paper
+  # only UNet was implemented for the dynacontrast paper
 
   weights: '<full path to weights filename as .h5 file>'
 

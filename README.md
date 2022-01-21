@@ -10,3 +10,4 @@ Example UMAP of representations of 4 cell types. Cells that look similarly are g
 
 ![umap_fig](UMAP_4_cell_types.png)
 
+## Getting Started

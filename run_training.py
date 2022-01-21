@@ -2,10 +2,8 @@ import os
 import numpy as np
 import argparse
 import dask
-import dask.array as da
 import torch as t
 import torch.nn as nn
-import pandas as pd
 import time
 import zarr
 from numcodecs import blosc
@@ -13,17 +11,15 @@ from tqdm import tqdm
 from torch.utils.data import TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 # from torchvision import transforms
-from scipy.sparse import csr_matrix
 
-from utils.patch_VAE import concat_relations
 from utils.train_utils import EarlyStopping, DataLoader
-from dataset.dataset import TripletDataset, TripletIterDataset, worker_init_fn
+from dataset.dataset import TripletIterDataset, worker_init_fn
 from dataset.augmentation import augment_img
 from HiddenStateExtractor.losses import AllTripletMiner, NTXent
 from HiddenStateExtractor.resnet import EncodeProject
 
-from configs.config_reader import YamlReader
-import queue
+from utils.config_reader import YamlReader
+
 dask.config.set(scheduler='synchronous')
 blosc.use_threads = True
 
