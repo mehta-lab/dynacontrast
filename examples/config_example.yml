@@ -131,8 +131,8 @@ inference:
   num_workers: 16
 
 training:
-  raw_dir: '/CompMicro/projects/dynacontrast/4_cell_types'
-  weights_dir: '~/dnm_train'
+  raw_dir: '/gpfs/CompMicro/projects/dynacontrast/4_cell_types'
+  weights_dir: '~/dynacontrast_train_test'
   # model hyperparameters
   network: 'ResNet50'
   network_width: 1

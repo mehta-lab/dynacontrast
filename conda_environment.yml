@@ -17,6 +17,7 @@ dependencies:
   - scikit-learn
   - scipy
   - pytorch==1.2.0
+  - tensorboard==1.15.0
   - tqdm
   - torchvision==0.4.0
   - zarr
