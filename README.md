@@ -58,7 +58,7 @@ Extract single cell patches from single cell instance segmentation maps, then co
 
 Assemble extracted patches into a single zarr array:
 
-	python run_VAE.py -m "assemble" -c <path-to-your-config-yaml>
+	python run_encoding.py -m "assemble" -c <path-to-your-config-yaml>
 
 Train a model to learn single cell representation of the patches:
 
@@ -66,9 +66,11 @@ Train a model to learn single cell representation of the patches:
 
 Encode image patches into the vectors using the model:
 
-	python run_VAE.py -m "process" -c <path-to-your-config-yaml>
+	python run_encoding.py -m "process" -c <path-to-your-config-yaml>
 
 For example, to run encoding using the example config:
+
+    python run_encoding.py -m process --config examples/config_example.yml 
 
     
 
