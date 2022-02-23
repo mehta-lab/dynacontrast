@@ -1,10 +1,9 @@
-from utils.patch_VAE import assemble_VAE, process_VAE, trajectory_matching, pool_datasets
+from utils.patch_VAE import assemble_VAE, encode_patches, trajectory_matching, pool_datasets
 from SingleCellPatch.patch_utils import get_im_sites
-from torch.multiprocessing import Pool, Queue, Process
+from torch.multiprocessing import Process
 import torch.multiprocessing as mp
-import os, sys
 import argparse
-from configs.config_reader import YamlReader
+from utils.config_reader import YamlReader
 
 
 class Worker(Process):
@@ -19,7 +18,7 @@ class Worker(Process):
             #TODO: make "patch_type" part of the config
             assemble_VAE(*self.inputs, patch_type='mat')
         elif self.method == 'process':
-            process_VAE(*self.inputs, gpu=self.gpuid)
+            encode_patches(*self.inputs, gpu=self.gpuid)
         elif self.method == 'trajectory_matching':
             trajectory_matching(*self.inputs)
 

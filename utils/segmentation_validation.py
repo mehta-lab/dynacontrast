@@ -4,7 +4,7 @@ import os
 from PIL import Image, ImageFilter
 import matplotlib.pyplot as plt
 import skimage.io as io
-from configs.config_reader import YamlReader
+from utils.config_reader import YamlReader
 
 
 def find_rim(cell_positions):
@@ -243,7 +243,6 @@ def segmentation_validation_to_tiff(paths):
     :param paths:
     :return:
     """
-    import tifffile as tf
     import imageio as io
 
     target, date, sites = paths[0], paths[1], paths[2]

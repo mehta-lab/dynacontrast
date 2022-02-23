@@ -173,7 +173,7 @@ class YamlReader(Struct):
 
     def read_config(self, yml_config):
         with open(yml_config, 'r') as f:
-            self.config = yaml.load(f)
+            self.config = yaml.load(f, Loader=yaml.FullLoader)
             super(YamlReader, self).__init__(self.config)
             # # self._parse_files()
             # self._parse_preprocessing()

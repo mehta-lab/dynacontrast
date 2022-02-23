@@ -8,7 +8,7 @@ import random
 import zarr
 from torch.utils.data import Dataset, IterableDataset
 
-def worker_init_fn(worker_id):
+def worker_init_fn():
     worker_info = torch.utils.data.get_worker_info()
     worker_id = worker_info.id
     # Pytorch seeds each worker in DataLoader with seed + worker_id.
@@ -143,21 +143,7 @@ class TripletIterDataset(IterableDataset):
     """Same as TripletDataset but optimized for data in zarr format. Use n_workers > 10
     and worker_init_fn with DataLoader for better loading speed and avoid repetitive sampling
     Attributes
-    ----------
-    labels  : np.ndarray
-              Array containing all the labels respectively to each data sample.
-              Labels needs to provide a way to access a sample label by index.
-    data_fn : Callable
-              The data_fn provides access to sample data given its index in the
-              dataset. Providding a function instead of array has been chosen
-              for preprocessing and other reasons.
-    size    : int
-              Size gives the dataset size, number of samples.
-    n_sample: int
-              The value represents the number of sample per index. The other
-              samples will be chosen to be the same label as the selected one. This
-              allows to augment the number of possible valid triplet when used
-              with a tripelt mining strategy.
+
     """
 
     def __init__(
@@ -175,10 +161,9 @@ class TripletIterDataset(IterableDataset):
                   Array containing all the labels respectively to each data
                   sample. Labels needs to provide a way to access a sample label
                   by index.
+        data : zarr.array with shape (n, c, y, x)
         data_fn : Callable
-                  The data_fn provides access to sample data given its index in
-                  the dataset. Providding a function instead of array has been
-                  chosen for preprocessing and other reasons.
+                  function for preprocessing the data.
         size    : int
                   Size gives the dataset size, number of samples.
         n_sample: int
@@ -192,12 +177,10 @@ class TripletIterDataset(IterableDataset):
         self.data = data
         self.data_fn = data_fn
         self.size = len(labels)
-        # self.size = 50
         self.n_sample = n_sample
         self.shuffle = shuffle
         self.start = 0
         self.end = len(labels)
-        # self.end = 50
 
     def __len__(self: 'TripletIterDataset') -> int:
         """Len
@@ -209,12 +192,7 @@ class TripletIterDataset(IterableDataset):
         return self.size
 
     def __iter__(self: 'TripletIterDataset') -> Iterator:
-        """GetItem
-        Parameters
-        ----------
-        index: int
-               Index of the sample to draw. The value should be less than the
-               dataset size and positive.
+        """
         Returns
         -------
         labels: torch.Tensor
@@ -225,9 +203,6 @@ class TripletIterDataset(IterableDataset):
                 Returns the data respectively to each of the samples drawn.
                 First sample is the sample is the one at the selected index,
                 and others are selected randomly from the rest of the dataset.
-        Raises
-        ------
-        IndexError: If index is negative or greater than the dataset size.
         """
 
         shuffle_ind = np.array(list(range(self.size)))
@@ -258,15 +233,13 @@ class ImageDataset(Dataset):
     """Basic dataset class without labels for inference
         Attributes
         ----------
-        data : np.ndarray
-                  The data_fn provides access to sample data given its index in the
-                  dataset. Providding a function instead of array has been chosen
-                  for preprocessing and other reasons.
+        data : zarr.array with shape (n, c, y, x)
+
         """
 
     def __init__(
             self: 'ImageDataset',
-            data: np.ndarray,
+            data: zarr.array,
              ) -> None:
 
         super(Dataset, self).__init__()
@@ -291,11 +264,8 @@ class ImageDataset(Dataset):
                dataset size and positive.
         Returns
         -------
-        labels: torch.Tensor
-                Returns the labels respectively to each of the samples drawn.
-                First sample is the sample is the one at the selected index,
-                and others are selected randomly from the rest of the dataset.
-        datum  : torch.Tensor
+
+        datum  : np.array
                 sample drawn at the selected index,
         Raises
         ------
@@ -303,5 +273,5 @@ class ImageDataset(Dataset):
         """
         if not (index >= 0 and index < len(self)):
             raise IndexError(f'Index {index} is out of range [ 0, {len(self)} ]')
-        datum = self.data[index]
+        datum = np.array(self.data[index])
         return datum
