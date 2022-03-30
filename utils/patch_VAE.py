@@ -388,6 +388,7 @@ def encode_patches(raw_dir: str,
     num_workers = config_.inference.num_workers
     normalization = config_.inference.normalization
     projection = config_.inference.projection
+    splits = config_.inference.splits
 
     assert len(channels) > 0, "At least one channel must be specified"
 
@@ -399,19 +400,16 @@ def encode_patches(raw_dir: str,
         output_dir = os.path.join(raw_dir, model_name)
         encode_layer = 'h'
     os.makedirs(output_dir, exist_ok=True)
-
-    if normalization == 'dataset':
-        train_set = zarr.open(os.path.join(raw_dir, 'cell_patches_datasetnorm_train.zarr'))
-        val_set = zarr.open(os.path.join(raw_dir, 'cell_patches_datasetnorm_val.zarr'))
-    elif normalization == 'patch':
-        # train_set_sync = zarr.ProcessSynchronizer(os.path.join(raw_dir, 'cell_patches_train.sync'))
-        train_set = zarr.open(os.path.join(raw_dir, 'cell_patches_train.zarr'))
-        val_set = zarr.open(os.path.join(raw_dir, 'cell_patches_val.zarr'))
-    else:
-        raise ValueError('Parameter "normalization" must be "dataset" or "patch"')
-    train_set = ImageDataset(train_set)
-    val_set = ImageDataset(val_set)
-    datasets = {'train': train_set, 'val': val_set}
+    datasets = {}
+    for split in splits:
+        if normalization == 'dataset':
+            datasets[split] = zarr.open(os.path.join(raw_dir, 'cell_patches_datasetnorm_{}.zarr'.format(split)))
+        elif normalization == 'patch':
+            # train_set_sync = zarr.ProcessSynchronizer(os.path.join(raw_dir, 'cell_patches_train.sync'))
+            datasets[split] = zarr.open(os.path.join(raw_dir, 'cell_patches_{}.zarr'.format(split)))
+        else:
+            raise ValueError('Parameter "normalization" must be "dataset" or "patch"')
+        datasets[split] = ImageDataset(datasets[split])
     device = torch.device('cuda:%d' % gpu)
     print('Encoding images using gpu {}...'.format(gpu))
     # Only ResNet is available now
@@ -481,8 +479,7 @@ def assemble_patches(df_meta,
         key (str): 'mat' or 'masked_mat'
 
     Returns:
-        np array: dataset of training inputs
-        list of str: identifiers of single cell image patches
+        dataset (np array): array of cell patches with dimension (n, c, y, x)
 
     """
     dataset = []
