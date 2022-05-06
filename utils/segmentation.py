@@ -92,9 +92,7 @@ def segmentation(raw_folder_: str,
 
 def instance_segmentation(raw_folder: str,
                           supp_folder: str,
-                          val_folder: str,
                           sites: list,
-                          config_: YamlReader,
                           rerun=False,
                           **kwargs):
     """ Helper function for instance segmentation
@@ -142,7 +140,12 @@ def instance_segmentation(raw_folder: str,
                                                            site_segmentation_path,
                                                            site_supp_files_folder,
                                                            **kwargs)
-        # meta_list += meta_list_site
         df_meta = pd.DataFrame.from_dict(meta_list_site)
+        if os.path.isfile(os.path.join(raw_folder, 'metadata.csv')): # merge existing metadata if it exists
+            df_meta_exp = pd.read_csv(os.path.join(raw_folder, 'metadata.csv'), index_col=0)
+            df_meta = pd.merge(df_meta,
+                               df_meta_exp,
+                               how='left', on='position', validate='m:1')
+
         df_meta.to_csv(os.path.join(site_supp_files_folder, 'patch_meta.csv'), sep=',')
     return

@@ -150,7 +150,7 @@ def train_val_split(dataset, labels, val_split_ratio=0.15, seed=0):
     return train_set, train_labels, val_set, val_labels
 
 
-def train_val_split_by_col(dataset, labels, df_meta, split_cols=None, val_split_ratio=0.15, seed=0):
+def split_data(dataset, label, df_meta, split_cols=None, splits = ('train', 'val'), val_split_ratio=0.15, seed=0):
     """Split the dataset into train and validation sets
 
     Args:
@@ -166,21 +166,24 @@ def train_val_split_by_col(dataset, labels, df_meta, split_cols=None, val_split_
         val_labels (list or np array): validation labels corresponding to inputs in train set
 
     """
-    assert 0 < val_split_ratio < 1
-    if split_cols is None:
-        split_cols = ['data_dir', 'FOV']
-    split_key = df_meta[split_cols].apply(lambda row: '_'.join(row.values.astype(str)), axis=1)
-    gss = GroupShuffleSplit(test_size=val_split_ratio, n_splits=2, random_state=seed)
-    (train_ids, val_ids), _ = gss.split(df_meta, groups=split_key)
-    df_meta['split'] = 'train'
-    df_meta.loc[val_ids, 'split'] = 'val'
-    train_set = dataset[train_ids]
-    train_labels = labels[train_ids]
-    train_set = train_set.rechunk((1, 2, 128, 128))
-    train_labels = train_labels.rechunk((len(train_labels),))
-    val_set = dataset[val_ids]
-    val_labels = labels[val_ids]
-    val_set = val_set.rechunk((1, 2, 128, 128))
-    val_labels = val_labels.rechunk((len(val_labels),))
+    if splits == ('all',):
+        split_ids = [np.arange(len(dataset))]
+    elif splits == ('train', 'val'):
+        assert 0 < val_split_ratio < 1
+        if split_cols is None:
+            split_cols = ['data_dir', 'FOV']
+        elif type(split_cols) is str:
+            split_cols = [split_cols]
+        split_key = df_meta[split_cols].apply(lambda row: '_'.join(row.values.astype(str)), axis=1)
+        gss = GroupShuffleSplit(test_size=val_split_ratio, n_splits=2, random_state=seed)
+        split_ids, _ = gss.split(df_meta, groups=split_key)
+    else:
+        raise NotImplementedError('Unsupported split type {}'.format(splits))
+    datasets = {split: dataset[ids] for split, ids in zip(splits, split_ids)}
+    labels = {split: label[ids] for split, ids in zip(splits, split_ids)}
+    df_metas = {split: df_meta.iloc[ids] for split, ids in zip(splits, split_ids)}
 
-    return train_set, train_labels, val_set, val_labels, df_meta
+    # train_set = train_set.rechunk((1, 2, 128, 128))
+    # val_set = val_set.rechunk((1, 2, 128, 128))
+
+    return datasets, labels, df_metas

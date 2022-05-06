@@ -31,21 +31,16 @@ def check_segmentation_dim(segmentation):
         segmentation: (np.array): segmentation mask for the frame
 
     """
-    # if segmentation.ndim == 4:
-    #     n_channels, n_z, x_full_size, y_full_size = segmentation.shape
+    if segmentation.ndim == 5:
+        return segmentation
+    if segmentation.ndim == 4: # missing channel dim
+        segmentation = segmentation[:, np.newaxis, ...]
     if segmentation.ndim == 3:
-        n_channels, x_full_size, y_full_size = segmentation.shape
-        # segmentation = segmentation[:, np.newaxis, ...]
+        segmentation = segmentation[np.newaxis, np.newaxis, ...]
     elif segmentation.ndim == 2:
-        n_channels = 1
-        segmentation = segmentation[np.newaxis, ...]
+        segmentation = segmentation[np.newaxis, np.newaxis, np.newaxis, ...]
     else:
-        raise ValueError('Semantic segmentation mask must be 2 or 3D, not {}'.format(segmentation.ndim))
-
-    # binary segmentation has only foreground channel, add background channel
-    if n_channels == 1:
-        segmentation = np.concatenate([1 - segmentation, segmentation], axis=0)
-    assert np.allclose(segmentation.sum(0), 1.), "Semantic segmentation doens't sum up to 1"
+        raise ValueError('segmentation mask must be 2-5D, not {}'.format(segmentation.ndim))
     return segmentation
 
 
@@ -156,7 +151,7 @@ def get_im_sites(input_dir):
         sites (list): sites (FOV names)
 
     """
-    img_names = [file for file in os.listdir(input_dir) if (file.endswith(".npy")) & ('_NN' not in file)]
+    img_names = [file for file in os.listdir(input_dir) if file.endswith(".npy") & file.startswith('img_') & ('_NN' not in file)]
     sites = [os.path.splitext(img_name)[0] for img_name in img_names]
     sites = natsort.natsorted(list(set(sites)))
     return sites

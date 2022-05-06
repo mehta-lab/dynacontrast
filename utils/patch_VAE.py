@@ -19,7 +19,7 @@ from tqdm import tqdm
 import zarr
 from SingleCellPatch.extract_patches import process_site_extract_patches
 from SingleCellPatch.generate_trajectories import process_site_build_trajectory, process_well_generate_trajectory_relations
-from utils.train_utils import zscore, zscore_patch, train_val_split_by_col
+from utils.train_utils import zscore, zscore_patch, split_data
 from dataset.dataset import ImageDataset
 import HiddenStateExtractor.resnet as resnet
 
@@ -120,12 +120,11 @@ def build_trajectories(summary_folder: str,
     return
 
 
-def assemble_VAE(raw_folder: str,
-                 supp_folder: str,
-                 sites: list,
-                 config: YamlReader,
-                 patch_type: str='masked_mat',
-                 **kwargs):
+def pool_positions(raw_folder: str,
+                   supp_folder: str,
+                   sites: list,
+                   config: YamlReader,
+                   ):
     """ Wrapper method for prepare dataset for VAE encoding
 
     This function loads data from multiple sites, adjusts intensities to correct
@@ -145,21 +144,34 @@ def assemble_VAE(raw_folder: str,
         config (YamlReader): config file supplied at CLI
 
     """
-
-    channels = config.inference.channels
-
-    assert len(channels) > 0, "At least one channel must be specified"
-
+    splits = ('all',)
+    split_ratio = None
+    split_cols = None
+    label_col = None
+    patch_shape = (128, 128)
+    if hasattr(config.patch, 'splits'):
+        splits = config.patch.splits
+    if hasattr(config.patch, 'split_ratio'):
+        split_ratio = config.patch.split_ratio
+    if hasattr(config.patch, 'split_cols'):
+        split_cols = config.patch.split_cols
+    if hasattr(config.patch, 'label_col'):
+        label_col = config.patch.label_col
+    if hasattr(config.patch, 'size'):
+        patch_shape = (config.patch.size, config.patch.size)
+    if type(splits) is str:
+        splits = [splits]
+    if type(splits) is list:
+        splits = tuple(splits)
     # sites should be from a single condition (C5, C4, B-wells, etc..)
     assert len(set(site[:2] for site in sites)) == 1, \
         "Sites should be from a single well/condition"
     well = sites[0][:2]
 
-    # Prepare dataset for VAE
-
     df_meta = pd.DataFrame()
     traj_id_offsets = {'time trajectory ID': 0, 'slice trajectory ID': 0}
     for site in sites:
+        # print(site)
         supp_files_folder = os.path.join(supp_folder, '%s-supps' % site[:2], '%s' % site)
         meta_path = os.path.join(supp_files_folder, 'patch_meta.csv')
         df_meta_site = pd.read_csv(meta_path, index_col=0, converters={
@@ -173,25 +185,33 @@ def assemble_VAE(raw_folder: str,
     df_meta.reset_index(drop=True, inplace=True)
     meta_path = os.path.join(supp_folder, '%s-supps' % well, 'patch_meta.csv')
     df_meta.to_csv(meta_path, sep=',')
-    dataset = assemble_patches(df_meta, supp_folder, channels=channels, key=patch_type)
+    dataset = combine_patches(df_meta, supp_folder, input_shape=patch_shape)
     assert len(dataset) == len(df_meta), 'Number of patches and rows in metadata are not consistent.'
-    dataset = zscore(dataset, channel_mean=None, channel_std=None).astype(np.float32)
-    output_fname = os.path.join(raw_folder, 'cell_patches_datasetnorm.zarr')
-    print('saving {}...'.format(output_fname))
-    zarr.save(output_fname, dataset)
+    # dataset = zscore(dataset, channel_mean=None, channel_std=None).astype(np.float32)
+    # output_fname = os.path.join(raw_folder, 'cell_patches_datasetnorm.zarr')
+    # print('saving {}...'.format(output_fname))
+    # zarr.save(output_fname, dataset)
     dataset = zscore_patch(dataset).astype(np.float32)
-    output_fname = os.path.join(raw_folder, 'cell_patches.zarr')
-    print('saving {}...'.format(output_fname))
-    zarr.save(output_fname, dataset)
-    relations, labels = process_well_generate_trajectory_relations(df_meta, track_dim='slice')
-    print('len(labels):', len(labels))
+    if label_col is None:
+        label = np.arange(len(dataset))
+    else:
+        _, label = process_well_generate_trajectory_relations(df_meta, track_dim='slice')
+    print('len(labels):', len(label))
     print('len(dataset):', len(dataset))
-    assert len(dataset) == len(labels), 'Number of patches and labels are not consistent.'
-    # with open(os.path.join(raw_folder, "%s_static_patches_relations.pkl" % well), 'wb') as f:
-    #     pickle.dump(relations, f)
-    output_fname = os.path.join(raw_folder, 'patch_labels.zarr')
-    print('saving {}...'.format(output_fname))
-    zarr.save(output_fname, labels)
+    assert len(dataset) == len(label), 'Number of patches and labels are not consistent.'
+    datasets, labels, df_metas = split_data(dataset, label, df_meta, splits=splits, split_cols=split_cols,
+                       val_split_ratio=split_ratio, seed=0)
+    for split in splits:
+        patch_fname = os.path.join(raw_folder, 'cell_patches_{}.zarr'.format(split))
+        label_fname = os.path.join(raw_folder, 'patch_labels_{}.npy'.format(split))
+        meta_fname = os.path.join(raw_folder, 'patch_meta_{}.csv'.format(split))
+        print('saving {}...'.format(patch_fname))
+        data_zar = zarr.open(patch_fname, mode='w', shape=datasets[split].shape, chunks=datasets[split][0].shape, dtype=np.float32)
+        data_zar[:] = datasets[split]
+        print('saving {}...'.format(label_fname))
+        with open(label_fname, 'wb') as f:
+            np.save(f, labels[split])
+        df_metas[split].to_csv(meta_fname, sep=',')
     return
 
 
@@ -250,8 +270,8 @@ def pool_datasets(config):
         # dataset = da.from_zarr(os.path.join(dst_dir, patch_fname))
         t0 = time.time()
         train_set, train_labels, val_set, val_labels, df_meta_all_split = \
-            train_val_split_by_col(dataset, labels, df_meta_all, split_cols=['data_dir', 'FOV'],
-                                   val_split_ratio=val_split_ratio, seed=0)
+            split_data(dataset, labels, df_meta_all, split_cols=['data_dir', 'FOV'],
+                       val_split_ratio=val_split_ratio, seed=0)
         t1 = time.time()
         print('splitting dataset takes:', t1 - t0)
         t0 = time.time()
@@ -268,70 +288,6 @@ def pool_datasets(config):
         t1 = time.time()
         print('writing dataset takes:', t1 - t0)
         df_meta_all_split.to_csv(os.path.join(dst_dir, 'patch_meta' + suffix + '.csv'), sep=',')
-    return
-
-
-def trajectory_matching(summary_folder: str,
-                        supp_folder: str,
-                        # channels: list,
-                        # model_path: str,
-                        sites: list,
-                        config_: YamlReader,
-                        **kwargs):
-    """ Helper function for assembling frame IDs to trajectories
-
-    This function loads saved static frame identifiers ("*_file_paths.pkl") and
-    cell trajectories ("cell_traj.pkl" in supplementary data folder) and assembles
-    list of frame IDs for each trajectory
-
-    Results will be saved in the summary folder, including:
-        "*_trajectories.pkl": list of frame IDs
-
-    Args:
-        summary_folder (str): folder for raw data, segmentation and
-            summarized results
-        supp_folder (str): folder for supplementary data
-        channels (list of int): indices of channels used for segmentation
-            (not used)
-        model_path (str, optional): path to model weight (not used)
-        sites (list of str): list of site names
-
-    """
-
-    assert len(set(site[:2] for site in sites)) == 1, \
-        "Sites should be from a single well/condition"
-    well = sites[0][:2]
-
-    print(f"\tloading file_paths {os.path.join(summary_folder, '%s_file_paths.pkl' % well)}")
-    fs = pickle.load(open(os.path.join(summary_folder, '%s_file_paths.pkl' % well), 'rb'))
-
-    def patch_name_to_tuple(f):
-        f = [seg for seg in f.split('/') if len(seg) > 0]
-        site_name = f[-2]
-        assert site_name in sites
-        t_point = int(f[-1].split('_')[0])
-        cell_id = int(f[-1].split('_')[1].split('.')[0])
-        return (site_name, t_point, cell_id)
-    patch_id_mapping = {patch_name_to_tuple(f): i for i, f in enumerate(fs)}
-
-    site_trajs = {}
-    for site in sites:
-        site_supp_files_folder = os.path.join(supp_folder, '%s-supps' % well, '%s' % site)
-        print(f"\tloading cell_traj {os.path.join(site_supp_files_folder, 'cell_traj.pkl')}")
-        trajs = pickle.load(open(os.path.join(site_supp_files_folder, 'cell_traj.pkl'), 'rb'))
-        for i, t in enumerate(trajs[0]):
-            name = site + '/' + str(i)
-            traj = []
-            for t_point in sorted(t.keys()):
-                frame_id = patch_id_mapping[(site, t_point, t[t_point])]
-                if not frame_id is None:
-                    traj.append(frame_id)
-            if len(traj) > 0.95 * len(t):
-                site_trajs[name] = traj
-
-    with open(os.path.join(summary_folder, '%s_trajectories.pkl' % well), 'wb') as f:
-        print(f"\twriting trajectories {os.path.join(summary_folder, '%s_trajectories.pkl' % well)}")
-        pickle.dump(site_trajs, f)
     return
 
 def import_object(module_name, obj_name, obj_type='class'):
@@ -432,9 +388,10 @@ def encode_patches(raw_dir: str,
         h_s = []
         with tqdm(data_loader, desc='inference batch') as batch_pbar:
             for batch in batch_pbar:
+                print(batch.shape)
                 batch = batch.to(device)
                 code = model.encode(batch, out=encode_layer).cpu().data.numpy().squeeze()
-                # print(code.shape)
+                print(code.shape)
                 h_s.append(code)
         dats = np.concatenate(h_s, axis=0)
         output_fname = '{}_embeddings.npy'.format(data_name)
@@ -463,11 +420,10 @@ def concat_relations(labels, offsets):
     return new_labels
 
 
-def assemble_patches(df_meta,
-                     supp_folder,
-                     channels=None,
-                     input_shape=(128, 128),
-                     key='masked_mat'):
+def combine_patches(df_meta,
+                    supp_folder,
+                    input_shape=(128, 128),
+                    ):
     """ Prepare input dataset for VAE
 
     This function reads assembled pickle files (dict)
@@ -483,28 +439,18 @@ def assemble_patches(df_meta,
 
     """
     dataset = []
-    sites = df_meta['FOV'].unique()
+    pos_ids = df_meta['position'].unique()
     t_points = df_meta['time'].unique()
     slices = df_meta['slice'].unique()
-    for site in sites:
-        supp_files_folder = os.path.join(supp_folder, '%s-supps' % site[:2], '%s' % site)
+    for pos_idx in pos_ids:
+        supp_files_folder = os.path.join(supp_folder, 'im-supps', 'img_p{:03}'.format(pos_idx))
         for t in t_points:
             for z in slices:
-                cell_ids = df_meta.loc[(df_meta['FOV'] == site) &
-                                       (df_meta['time'] == t) &
-                                       (df_meta['slice'] == z), 'cell ID'].to_list()
-                stack_path_site = os.path.join(supp_files_folder, 'stacks_t{}_z{}.pkl'.format(t, z))
+                stack_path_site = os.path.join(supp_files_folder, 'patches_t{}_z{}.npy'.format(t, z))
                 print(f"\tloading data {stack_path_site}")
                 with open(stack_path_site, 'rb') as f:
-                    stack_dict = pickle.load(f)
-                for cell_id in cell_ids:
-                    patch_key = os.path.join(supp_files_folder, 't{}_z{}_cell{}'.format(t, z, cell_id))
-                    # patch_key = 't{}_z{}_cell{}'.format(t, z, cell_id)
-                    dat = stack_dict[patch_key][key]
-                    if channels is None:
-                        channels = np.arange(dat.shape[0])
-                    dat = np.array(dat)[np.array(channels)].astype(float)
-                    resized_dat = cv2_fn_wrapper(cv2.resize, dat, input_shape)
-                    dataset.append(resized_dat)
-    dataset = np.stack(dataset)
+                    cell_patches = np.load(f)
+                resized_dat = cv2_fn_wrapper(cv2.resize, cell_patches, input_shape)
+                dataset.append(resized_dat)
+    dataset = np.concatenate(dataset, axis=0)
     return dataset

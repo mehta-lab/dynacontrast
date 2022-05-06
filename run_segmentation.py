@@ -14,54 +14,27 @@ from utils.config_reader import YamlReader
 
 
 class Worker(Process):
-    def __init__(self, inputs, gpuid=0, method='segmentation'):
+    def __init__(self, inputs, method='segmentation'):
         super().__init__()
-        self.gpuid = gpuid
         self.inputs = inputs
         self.method = method
 
     def run(self):
-        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpuid)
+        log.info(f"running instance segmentation")
+        instance_segmentation(*self.inputs, rerun=True)
 
-        if self.method == 'segmentation':
-            log.info(f"running segmentation worker on {self.gpuid}")
-            segmentation(*self.inputs)
-        elif self.method == 'instance_segmentation':
-            log.info(f"running instance segmentation")
-            instance_segmentation(*self.inputs, rerun=True)
-        elif self.method == 'segmentation_validation':
-            segmentation_validation_michael(*self.inputs)
-
-
-def main(method_, raw_dir_, supp_dir_, val_dir_, config_):
+def main(method_, raw_dir_, supp_dir_, config_):
     method = method_
-
     inputs = raw_dir_
     outputs = supp_dir_
-    gpus = config.segmentation.gpu_ids
-    gpus = [int(g) for g in gpus]
     n_workers = config.segmentation.num_workers
 
     assert len(config_.segmentation.channels) > 0, "At least one channel must be specified"
 
-    # segmentation validation requires raw, supp, and validation definitions
-    if method == 'segmentation_validation':
-        if not val_dir_:
-            raise AttributeError("validation directory must be specified when method=segmentation_validation")
-        if not outputs:
-            raise AttributeError("supplemntary directory must be specifie dwhen method=segmentation_validation")
-
-    # segmentation requires raw (NNProb), and weights to be defined
-    elif method == 'segmentation':
-        if config_.segmentation.weights is None:
-            raise AttributeError("Weights supp_dir must be specified when method=segmentation")
 
     # instance segmentation requires raw (stack, NNprob), supp (to write outputs) to be defined
-    elif method == 'instance_segmentation':
-        TARGET = ''
-    else:
-        raise AttributeError(f"method flag {method} not implemented")
+    if method != 'instance_segmentation':
+        raise NotImplementedError(f"Method flag {method} not implemented. Use Cellpose to generate cell segmentation")
 
     # all methods all require
     if config_.segmentation.fov:
@@ -77,8 +50,8 @@ def main(method_, raw_dir_, supp_dir_, val_dir_, config_):
     processes = []
     for i in range(n_workers):
         _sites = segment_sites[sep[i]:sep[i + 1]]
-        args = (inputs, outputs, val_dir_, _sites, config_)
-        process = Worker(args, gpuid=gpus[0], method=method)
+        args = (inputs, outputs, _sites)
+        process = Worker(args, method=method)
         process.start()
         processes.append(process)
     for p in processes:
@@ -96,10 +69,10 @@ def parse_args():
     parser.add_argument(
         '-m', '--method',
         type=str,
-        required=True,
-        choices=['segmentation', 'instance_segmentation', 'segmentation_validation'],
-        default='segmentation',
-        help="Method: one of 'segmentation', 'instance_segmentation', or 'segmentation_validation'",
+        required=False,
+        choices=['segmentation', 'instance_segmentation'],
+        default='instance_segmentation',
+        help="Method: 'segmentation' or 'instance_segmentation'",
     )
 
     parser.add_argument(
@@ -119,5 +92,5 @@ if __name__ == '__main__':
     config.read_config(arguments.config)
 
     # batch run
-    for (raw_dir, supp_dir, val_dir) in list(zip(config.segmentation.raw_dirs, config.segmentation.supp_dirs, config.segmentation.val_dirs)):
-        main(arguments.method, raw_dir, supp_dir, val_dir, config)
+    for (raw_dir, supp_dir) in list(zip(config.segmentation.raw_dirs, config.segmentation.supp_dirs)):
+        main(arguments.method, raw_dir, supp_dir, config)

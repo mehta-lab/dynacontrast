@@ -117,12 +117,9 @@ def process_site_extract_patches(site_path,
     # Load data
     image_stack = np.load(site_path)
     segmentation_stack = np.load(site_segmentation_path)
-    with open(os.path.join(site_supp_files_folder, 'cell_positions.pkl'), 'rb') as f:
-        cell_positions = pickle.load(f)
-    with open(os.path.join(site_supp_files_folder, 'cell_pixel_assignments.pkl'), 'rb') as f:
-        cell_pixel_assignments = pickle.load(f)
     meta_path = os.path.join(site_supp_files_folder, 'patch_meta.csv')
-    df_meta = pd.read_csv(meta_path, index_col=0)
+    df_meta = pd.read_csv(meta_path, index_col=0, converters={
+        'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
     n_z = 1
     if image_stack.ndim == 5:
         n_frames, n_channels, n_z, x_full_size, y_full_size = image_stack.shape
@@ -133,42 +130,21 @@ def process_site_extract_patches(site_path,
         raise ValueError('Input image must be 4 or 5D, not {}'.format(image_stack.ndim))
     if channels is None:
         channels = list(range(n_channels))
-    else:
-        n_channels = len(channels)
     image_stack = image_stack[:, channels, ...]
     for t_point in range(n_frames):
         for z in range(n_z):
             print("processing timepoint {} z {}".format(t_point, z))
-            stack_dat_path = os.path.join(site_supp_files_folder, 'stacks_t{}_z{}.pkl'.format(t_point, z))
-            if reload and os.path.exists(stack_dat_path):
-                try:
-                    site_data = pickle.load(open(stack_dat_path, 'rb'))
-                    continue
-                except Exception as e:
-                    print(e)
-                    site_data = {}
-            else:
-                site_data = {}
+            stack_dat_path = os.path.join(site_supp_files_folder, 'patches_t{}_z{}.npy'.format(t_point, z))
             print('Writing timepoint {} z {}'.format(t_point, z))
             raw_image = image_stack[t_point, :, z, ...]
+            segmentation_stack = check_segmentation_dim(segmentation_stack)
             cell_segmentation = segmentation_stack[t_point, :, z, ...]
-            # cell_segmentation = check_segmentation_dim(cell_segmentation)
-            positions, positions_labels = cell_pixel_assignments[t_point][z]
-            all_cells = cell_positions[t_point][z]
-
-            # Define fillings for the masked pixels in this slice
-            cells_to_keep = []
-            background_positions = np.where(cell_segmentation[0] > 0.9)
-            background_pool = np.array([np.median(raw_image[i][background_positions]) for i in channels])
-            background_filling = np.ones((n_channels, window_size, window_size)) * background_pool.reshape((n_channels, 1, 1))
-
+            df_meta_tz = df_meta.loc[(df_meta['time'] == t_point) & (df_meta['slice'] == z), :]
+            all_cells = df_meta_tz.loc[:, ['cell ID', 'cell position']].to_numpy()
             # Save all cells in this step, filtering will be performed during analysis
-            cells_to_keep = []
+            cell_patches = []
             for cell_id, cell_position in all_cells:
-                # print(f"cell_id : {cell_id}")
-                cell_name = os.path.join(site_supp_files_folder, 't{}_z{}_cell{}'.format(t_point, z, cell_id))
-                if cell_name in site_data:
-                    continue
+                # print("cell_id : {}, cell position: {}".format(cell_id, cell_position))
                 # Define window based on cell center and extract mask
                 window = [(cell_position[0]-window_size//2, cell_position[0]+window_size//2),
                           (cell_position[1]-window_size//2, cell_position[1]+window_size//2)]
@@ -182,73 +158,35 @@ def process_site_extract_patches(site_path,
                                          (df_meta['time'] == t_point) &
                                          (df_meta['slice'] == z)].index, inplace=True)
                     continue
-                # only keep the cells that has patches
-                cells_to_keep.append(cell_id)
-                remove_mask, tm, tm2 = generate_mask(positions,
-                                                     positions_labels,
-                                                     cell_id,
-                                                     window,
-                                                     window_segmentation)
-
-                # Reshape (x, y) to (c, x, y)
-                remove_mask = np.expand_dims(remove_mask, 0)
-                tm = np.expand_dims(tm, 0)
-                tm2 = np.expand_dims(tm2, 0)
-
                 # Select submatrix from the whole slice
-                output_mat = select_window(raw_image, window, padding=0, skip_boundary=skip_boundary)
-                assert not output_mat is None
-                masked_output_mat = output_mat * (1 - remove_mask) + background_filling * remove_mask
-                site_data[cell_name] = {
-                    "mat": np.concatenate([output_mat, tm, tm2], 0).astype('float64'),
-                    "masked_mat": np.concatenate([masked_output_mat, tm, tm2], 0).astype('float64')
-                    }
-
+                cell_patch = select_window(raw_image, window, padding=0, skip_boundary=skip_boundary)
+                assert cell_patch is not None
+                cell_patches.append(cell_patch)
                 if save_fig:
                     im_path = os.path.join(site_supp_files_folder, 'patch_t{}_z{}_cell{}'.format(t_point, z, cell_id))
-                    save_single_cell_im(output_mat, masked_output_mat, tm, tm2, im_path)
-
+                    save_single_cell_im(cell_patch, im_path)
+            cell_patches = np.stack(cell_patches)
             with open(stack_dat_path, 'wb') as f:
-                print(f"WRITING STACKS TO {stack_dat_path}")
-                pickle.dump(site_data, f)
-
-            # remove cells that don't have patches, update cell_positions
-            updated_cell_positions_tz = [cell for cell in all_cells if cell[0] in cells_to_keep]
-            cell_positions[t_point][z] = updated_cell_positions_tz
+                print(f"save patches to {stack_dat_path}")
+                np.save(f, cell_patches)
     df_meta.reset_index(drop=True, inplace=True)
     df_meta.to_csv(meta_path, sep=',')
-    with open(os.path.join(site_supp_files_folder, 'cell_positions.pkl'), 'wb') as f:
-        pickle.dump(cell_positions, f)
 
 
 
 def save_single_cell_im(output_mat,
-                        masked_output_mat,
-                        tm,
-                        tm2,
                         im_path):
     """ Plot single cell patch (unmasked, masked, segmentation mask)
     """
-    # tm = tm[0, 0]
-    # tm2 = tm2[0, 0]
-    im_phase = output_mat[0]
-    im_phase_masked = masked_output_mat[0]
-    # replace zero-padding with min for display
-    im_phase[im_phase == 0] = np.nanmin(im_phase[im_phase != 0])
-    im_phase_masked[im_phase_masked == 0] = np.nanmin(im_phase_masked[im_phase_masked != 0])
-    im_phase = im_adjust(im_phase)
-    im_phase_masked = im_adjust(im_phase_masked)
-    n_rows = 2
-    n_cols = 2
+    n_rows = 1
+    n_cols = len(output_mat)
     fig, ax = plt.subplots(n_rows, n_cols, squeeze=False)
     ax = ax.flatten()
     fig.set_size_inches((15, 5 * n_rows))
     axis_count = 0
-    for im, name in zip([im_phase, im_phase_masked, tm, tm2],
-                        ['output_mat', 'masked_output_mat', 'tm', 'tm2']):
-        ax[axis_count].imshow(np.squeeze(im), cmap='gray')
+    for im in output_mat:
+        ax[axis_count].imshow(np.squeeze(im_adjust(im)), cmap='gray')
         ax[axis_count].axis('off')
-        ax[axis_count].set_title(name, fontsize=12)
         axis_count += 1
     fig.savefig(im_path, dpi=300, bbox_inches='tight')
     plt.close(fig)
@@ -370,7 +308,7 @@ def process_site_extract_patches_align_axis(site_path,
 
             if save_fig:
                 im_path = os.path.join(site_supp_files_folder, 'patch_rotated_t%d_id%d.jpg' % (t_point, cell_id))
-                save_single_cell_im(output_mat, masked_output_mat, tm, tm2, im_path)
+                save_single_cell_im(output_mat, im_path)
 
         with open(os.path.join(site_supp_files_folder, 'stacks_rotated_%d.pkl' % t_point), 'wb') as f:
             pickle.dump(site_data, f)

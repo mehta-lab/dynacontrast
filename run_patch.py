@@ -1,6 +1,6 @@
 # bchhun, {2020-02-21}
 
-from utils.patch_VAE import extract_patches, build_trajectories
+from utils.patch_VAE import extract_patches, build_trajectories, pool_positions
 from SingleCellPatch.patch_utils import get_im_sites
 from multiprocessing import Process
 import os
@@ -30,32 +30,21 @@ def main(method_, raw_dir_, supp_dir_, config_):
     supp = supp_dir_
     method = method_
     fov = config.patch.fov
-
     n_cpus = config.patch.num_cpus
-
-    # extract patches needs raw (NN probs, stack), supp (cell_positions, cell_pixel_assignments)
-    if method == 'extract_patches':
-        if not raw:
-            raise AttributeError("raw directory must be specified when method = extract_patches")
-        if not supp:
-            raise AttributeError("supplementary directory must be specified when method = extract_patches")
-
-    # extract patches needs supp (cell_positions, cell_pixel_assignments)
-    elif method == 'build_trajectories':
-        if not supp:
-            raise AttributeError("supplementary directory must be specified when method = extract_patches")
 
     if fov:
         sites = fov
     else:
         # get all "XX-SITE_#" identifiers in raw data directory
         sites = get_im_sites(raw)
+    if method == 'assemble':
+        pool_positions(raw_dir_, supp_dir_, sites, config_)
+        return
     # if probabilities and formatted stack exist
     segment_sites = [site for site in sites if os.path.exists(os.path.join(raw, "%s.npy" % site)) and \
                      os.path.exists(os.path.join(raw, "%s_NNProbabilities.npy" % site))]
     if len(segment_sites) == 0:
         raise AttributeError("no sites found in raw directory with preprocessed data and matching NNProbabilities")
-
     # process each site on a different GPU if using multi-gpu
     sep = np.linspace(0, len(segment_sites), n_cpus + 1).astype(int)
 
@@ -83,7 +72,7 @@ def parse_args():
         '-m', '--method',
         type=str,
         required=False,
-        choices=['extract_patches', 'build_trajectories'],
+        choices=['extract_patches', 'build_trajectories', 'assemble'],
         default='extract_patches',
         help="Method: one of 'extract_patches', 'build_trajectories'",
     )

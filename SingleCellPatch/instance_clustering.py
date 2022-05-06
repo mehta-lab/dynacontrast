@@ -8,7 +8,7 @@ Created on Mon Feb  8 21:27:26 2021
 import numpy as np
 import os
 import matplotlib
-from SingleCellPatch.patch_utils import within_range, im_adjust
+from SingleCellPatch.patch_utils import within_range, im_adjust, check_segmentation_dim
 
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
@@ -22,7 +22,6 @@ log = logging.getLogger(__name__)
 
 
 def instance_clustering(inst_segmentation,
-                        ct_thr=(0, np.inf),
                         ):
     """ Perform instance clustering on a static frame
 
@@ -94,12 +93,14 @@ def process_site_instance_segmentation(site,
     """
 
     # TODO: Size is hardcoded here
-    # Should be of size (n_frame, n_channels, z(1), x(2048), y(2048)), uint16
+    # Should be of size (n_frame, n_channels, z, x, y), uint16
     print(f"\tLoading {raw_data}")
     image_stack = np.load(raw_data)
-    # Should be of size (n_frame, n_classes, z(1), x(2048), y(2048)), float
+    # Should be of size (n_frame, n_classes, z, x, y), float
     print(f"\tLoading {raw_data_segmented}")
     segmentation_stack = np.load(raw_data_segmented)
+    segmentation_stack = check_segmentation_dim(segmentation_stack)
+    print(segmentation_stack.shape)
     meta_list = []
     cell_positions = {}
     cell_pixel_assignments = {}
@@ -108,17 +109,17 @@ def process_site_instance_segmentation(site,
         cell_pixel_assignments[t_point] = {}
         for z in range(image_stack.shape[2]):
             print("\tClustering time {} z {}".format(t_point, z))
-            img = image_stack[t_point, 0, z, ...] # get phase channel
             cell_segmentation = segmentation_stack[t_point, 0, z, ...] # assume the first channel is nuclei
             instance_map_path = os.path.join(site_supp_files_folder, 'segmentation_t{}_z{}.png'.format(t_point, z))
             #TODO: expose instance clustering parameters in config
             cell_ids, positions, cell_sizes, pixel_ids, positions_labels = \
-                instance_clustering(cell_segmentation, save_fig=True, map_path=instance_map_path)
+                instance_clustering(cell_segmentation)
             cell_positions[t_point][z] = list(zip(cell_ids, positions)) # List of cell: (cell_id, mean_pos)
             cell_pixel_assignments[t_point][z] = (pixel_ids, positions_labels)
 
             # Save instance segmentation results as image
             if save_fig is not None:
+                img = image_stack[t_point, 1, z, ...]  # get phase channel
                 overlay = color.label2rgb(cell_segmentation, im_adjust(img), bg_label=0, alpha=0.3)
                 plt.clf()
                 plt.imshow(overlay)
@@ -129,7 +130,7 @@ def process_site_instance_segmentation(site,
                 plt.savefig(instance_map_path, dpi=300)
             # new metadata format
             for cell_id, cell_pos, cell_size in zip(cell_ids, positions, cell_sizes):
-                meta_row = {'FOV': site,
+                meta_row = {'position': int(site[-3:]),
                             'time': t_point,
                             'slice': z,
                             'cell ID': cell_id,

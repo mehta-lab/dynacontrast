@@ -5,10 +5,13 @@ import pickle
 from sklearn.decomposition import PCA
 import argparse
 import matplotlib
+
+from plot_scripts.plotting import plot_umap, zoom_axis
+
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 import umap
-from utils.train_utils import zscore
+
 
 def fit_PCA(train_data, weights_dir, labels, conditions):
     """ Fit a PCA model accounting for top 50% variance to the train_data,
@@ -117,27 +120,14 @@ def umap_transform(input_dir, output_dir, weights_dir, prefix, suffix='_after'):
         with open(output_file, 'wb') as f:
             pickle.dump(dats_, f, protocol=4)
 
-def zoom_axis(x, y, ax, zoom_cutoff=1):
-    """
-    Auto zoom axes of pyplot axes object
-    Args:
-        x (array): x data
-        y (array): y data
-        ax (object): pyplot axes object
-        zoom_cutoff (float): percentage of outliers to cut off [0, 100]
-    """
-    xlim = [np.percentile(x, zoom_cutoff), np.percentile(x, 100 - zoom_cutoff)]
-    ylim = [np.percentile(y, zoom_cutoff), np.percentile(y, 100 - zoom_cutoff)]
-    ax.set_xlim(left=xlim[0], right=xlim[1])
-    ax.set_ylim(bottom=ylim[0], top=ylim[1])
 
-def fit_umap(train_data, weights_dir, labels, label_col, fraction=0.1, seed=0,
-             n_nbrs=(15,), a_s=(1.58,), b_s=(0.9,), dist_metric='euclidean', n_runs=9):
+def fit_umap(train_data, embed_dir, labels, label_col, fraction=0.1, seed=0,
+             n_nbrs=(15,), a_s=(1.58,), b_s=(0.9,), dist_metric='euclidean', n_runs=1):
     """Fit UMAP model to latent vectors and save the reduced vectors (embeddings), output UMAP plot
     Args:
         train_data (np.array): 2D array of training data (samples, features),
             should be directly extracted from VAE latent space
-        weights_dir (str): output directory for the fit umap model
+        embed_dir (str): output directory for the fit umap model
         labels (np array): 1D array of sample class indices.
         n_nbrs (float) (optional, default 15)
         The size of local neighborhood (in terms of number of neighboring
@@ -157,21 +147,16 @@ def fit_umap(train_data, weights_dir, labels, label_col, fraction=0.1, seed=0,
     """
     #TODO: Find a way to save umap models gernerated with version >= 0.5
 
-    label_unique = np.unique(labels)
-    label_unique = label_unique[label_unique != 'other']
-    label_unique = np.concatenate([np.array(['other']), label_unique], axis=0)
+
     n_plots = len(n_nbrs) * len(a_s) * len(b_s) * n_runs
     # n_cols = int(np.ceil(np.sqrt(n_plots)))
     n_cols = min(n_plots, 3)
-
     n_rows = np.ceil(n_plots / n_cols).astype(np.int32)
     fig, ax = plt.subplots(n_rows, n_cols, squeeze=False)
     ax = ax.flatten()
     fig.set_size_inches((6.5 * n_cols, 5 * n_rows))
 
-    # top and bottom % of data to cut off
-    zoom_cutoff = 1
-    cmap = plt.cm.Paired(np.linspace(0, 1, sum(label_unique != 'other')))
+
     # colors = cmap[labels]
     if fraction != 1:
         np.random.seed(seed)
@@ -182,38 +167,22 @@ def fit_umap(train_data, weights_dir, labels, label_col, fraction=0.1, seed=0,
     for n_nbr in n_nbrs:
         for a, b in zip(a_s, b_s):
             for run in range(n_runs):
-                print('Fitting UMAP model {} with N(neighbors)={}, a={}, b={}, run {} ...'.format(weights_dir, n_nbr, a, b, run))
+                print('Fitting UMAP model {} with N(neighbors)={}, a={}, b={}, run {} ...'.format(embed_dir, n_nbr, a, b, run))
                 reducer = umap.UMAP(a=a, b=b, n_neighbors=n_nbr, metric=dist_metric)
                 embedding = reducer.fit_transform(train_data)
-                print('Saving UMAP model {}...'.format(weights_dir))
-                with open(os.path.join(weights_dir, 'umap_{}_nbr{}_{}_run{}.npy'.format(label_col.replace(' ', '_'), n_nbr, dist_metric, run)), 'wb') as f:
+                print('Saving UMAP model {}...'.format(embed_dir))
+                with open(os.path.join(embed_dir, 'umap_nbr{}_{}_run{}.npy'.format(n_nbr, dist_metric, run)), 'wb') as f:
                     np.save(f, embedding)
                 embedding_sub = embedding[sample_ids, :]
                 labels_sub = labels[sample_ids]
-                idx = 0
-                for label in label_unique:
-                    if label == 'other':
-                        color = [0.95, 0.95, 0.95]
-                    else:
-                        color = cmap[idx]
-                        idx += 1
-                    scatter = ax[axis_count].scatter(embedding_sub[labels_sub == label, 0], embedding_sub[labels_sub == label, 1], s=7,
-                                                     color=color, facecolors='none', alpha=0.1)
-                    scatter.set_facecolor("none")
-                ax[axis_count].set_title('n_neighbors={}'.format(n_nbr), fontsize=12)
-                # ax[axis_count].set_title('a={}, b={}'.format(a, b), fontsize=12)
-                zoom_axis(embedding_sub[:, 0], embedding_sub[:, 1], ax[axis_count], zoom_cutoff=zoom_cutoff)
-                if axis_count == (len(ax)-1):
-                    leg = ax[axis_count].legend(
-                        title=label_col, labels=label_unique,
-                        loc='center left', bbox_to_anchor=(1, 0.5),
-                        fontsize='small')
-                    for lh in leg.legendHandles:
-                        lh.set_alpha(1)
-                ax[axis_count].set_xlabel('UMAP 1')
-                ax[axis_count].set_ylabel('UMAP 2')
+                print(labels_sub.shape)
+                title = 'n_neighbors={}'.format(n_nbr)
+                if axis_count == (len(ax) - 1):
+                    plot_umap(ax[axis_count], embedding_sub, labels_sub, title=title, leg_title=label_col, zoom_cutoff=0, plot_other=False)
+                else:
+                    plot_umap(ax[axis_count], embedding_sub, labels_sub, title=title, zoom_cutoff=0, plot_other=False)
                 axis_count += 1
-                fig.savefig(os.path.join(weights_dir, 'UMAP_{}_frac{}_{}_{}runs.png'.format(label_col.replace(' ', '_'), fraction, dist_metric, n_runs)),
+                fig.savefig(os.path.join(embed_dir, 'UMAP_{}_frac{}_{}_{}runs.png'.format('_'.join(label_col).replace(' ', '_'), fraction, dist_metric, n_runs)),
                             dpi=300, bbox_inches='tight')
     plt.close(fig)
 
@@ -275,9 +244,12 @@ def dim_reduction(input_dirs,
             vector_list.append(vec.reshape(vec.shape[0], -1))
 
         vectors = np.concatenate(vector_list, axis=0)
-
-        labels = df_meta_all[label_col].to_numpy()
-        _ = fit_func(vectors, weights_dir, labels=labels, label_col=label_col, fraction=fraction)
+        if len(label_col) == 1:
+            labels = df_meta_all[label_col[0]].to_numpy()
+        else:
+            labels = df_meta_all[label_col].apply(lambda row: '_'.join(row.values.astype(str)), axis=1).to_numpy()
+        print(labels.shape)
+        _ = fit_func(vectors, input_dir, labels=labels, label_col=label_col, fraction=fraction)
         # UMAP model from umap 0.5.0 can't be pickled with protocol=4.
         # Transform from saved models is currently not supported
         if method == 'umap':
