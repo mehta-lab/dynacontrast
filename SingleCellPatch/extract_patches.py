@@ -133,9 +133,9 @@ def process_site_extract_patches(site_path,
     image_stack = image_stack[:, channels, ...]
     for t_point in range(n_frames):
         for z in range(n_z):
-            print("processing timepoint {} z {}".format(t_point, z))
+            # print("processing timepoint {} z {}".format(t_point, z))
             stack_dat_path = os.path.join(site_supp_files_folder, 'patches_t{}_z{}.npy'.format(t_point, z))
-            print('Writing timepoint {} z {}'.format(t_point, z))
+            # print('Writing timepoint {} z {}'.format(t_point, z))
             raw_image = image_stack[t_point, :, z, ...]
             segmentation_stack = check_segmentation_dim(segmentation_stack)
             cell_segmentation = segmentation_stack[t_point, :, z, ...]
@@ -167,7 +167,7 @@ def process_site_extract_patches(site_path,
                     save_single_cell_im(cell_patch, im_path)
             cell_patches = np.stack(cell_patches)
             with open(stack_dat_path, 'wb') as f:
-                print(f"save patches to {stack_dat_path}")
+                # print(f"save patches to {stack_dat_path}")
                 np.save(f, cell_patches)
     df_meta.reset_index(drop=True, inplace=True)
     df_meta.to_csv(meta_path, sep=',')

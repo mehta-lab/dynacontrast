@@ -94,13 +94,13 @@ def process_site_instance_segmentation(site,
 
     # TODO: Size is hardcoded here
     # Should be of size (n_frame, n_channels, z, x, y), uint16
-    print(f"\tLoading {raw_data}")
+    # print(f"\tLoading {raw_data}")
     image_stack = np.load(raw_data)
     # Should be of size (n_frame, n_classes, z, x, y), float
-    print(f"\tLoading {raw_data_segmented}")
+    # print(f"\tLoading {raw_data_segmented}")
     segmentation_stack = np.load(raw_data_segmented)
     segmentation_stack = check_segmentation_dim(segmentation_stack)
-    print(segmentation_stack.shape)
+    # print(segmentation_stack.shape)
     meta_list = []
     cell_positions = {}
     cell_pixel_assignments = {}
@@ -108,7 +108,7 @@ def process_site_instance_segmentation(site,
         cell_positions[t_point] = {}
         cell_pixel_assignments[t_point] = {}
         for z in range(image_stack.shape[2]):
-            print("\tClustering time {} z {}".format(t_point, z))
+            # print("\tClustering time {} z {}".format(t_point, z))
             cell_segmentation = segmentation_stack[t_point, 0, z, ...] # assume the first channel is nuclei
             instance_map_path = os.path.join(site_supp_files_folder, 'segmentation_t{}_z{}.png'.format(t_point, z))
             #TODO: expose instance clustering parameters in config

@@ -9,7 +9,7 @@ from NNsegmentation.data import predict_whole_map
 from SingleCellPatch.instance_clustering import process_site_instance_segmentation
 from utils.config_reader import YamlReader
 import logging
-log = logging.getLogger(__name__)
+log = logging.getLogger('dynacontrast.log')
 
 
 def segmentation(raw_folder_: str,
@@ -93,7 +93,7 @@ def segmentation(raw_folder_: str,
 def instance_segmentation(raw_folder: str,
                           supp_folder: str,
                           sites: list,
-                          rerun=False,
+                          rerun=True,
                           **kwargs):
     """ Helper function for instance segmentation
 
@@ -119,27 +119,34 @@ def instance_segmentation(raw_folder: str,
         site_path = os.path.join(raw_folder, '%s.npy' % site)
         site_segmentation_path = os.path.join(raw_folder,
                                               '%s_NNProbabilities_cp_masks.npy' % site)
-        if not os.path.exists(site_path) or not os.path.exists(site_segmentation_path):
-            log.info("Site not found %s" % site_path)
-            continue
-
-        log.info("Clustering %s" % site_path)
         site_supp_files_folder = os.path.join(supp_folder,
                                               '%s-supps' % site[:2],
                                               '%s' % site)
+        if not os.path.exists(site_path) or not os.path.exists(site_segmentation_path):
+            log.info("Site not found %s" % site_path)
+            continue
 
         if os.path.exists(os.path.join(site_supp_files_folder, 'cell_pixel_assignments.pkl')) and not rerun:
             log.info('Found previously saved instance clustering output in {}. Skip processing...'
                   .format(site_supp_files_folder))
             continue
-        elif not os.path.exists(site_supp_files_folder):
-            os.makedirs(site_supp_files_folder, exist_ok=True)
 
-        meta_list_site = process_site_instance_segmentation(site,
-                                                           site_path,
-                                                           site_segmentation_path,
-                                                           site_supp_files_folder,
-                                                           **kwargs)
+        log.info("Process %s" % site_path)
+        os.makedirs(site_supp_files_folder, exist_ok=True)
+        try:
+            meta_list_site = process_site_instance_segmentation(site,
+                                                               site_path,
+                                                               site_segmentation_path,
+                                                               site_supp_files_folder,
+                                                               **kwargs)
+        except Exception as e:
+            log.error('Single cell detection failed for position {}. '.format(site) + e)
+            raise ValueError('Single cell detection failed for position {}. '.format(site) + e)
+
+        if len(meta_list_site) == 0:
+            log.warning('No cell is detected for position {}'.format(site))
+            print('No cell is detected for position {}'.format(site))
+            continue
         df_meta = pd.DataFrame.from_dict(meta_list_site)
         if os.path.isfile(os.path.join(raw_folder, 'metadata.csv')): # merge existing metadata if it exists
             df_meta_exp = pd.read_csv(os.path.join(raw_folder, 'metadata.csv'), index_col=0)

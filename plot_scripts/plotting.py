@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 def plot_umap(ax, embedding_sub, labels_sub, label_order=None, title=None, leg_title=None, zoom_cutoff=1, alpha=0.1, plot_other=True):
     # top and bottom % of data to cut off
-    print(labels_sub[:10])
+    # print(labels_sub[:10])
     if label_order is None:
         label_unique = np.unique(labels_sub)
     else:

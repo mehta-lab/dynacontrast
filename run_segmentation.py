@@ -7,6 +7,7 @@ from multiprocessing import Process
 import os
 import numpy as np
 import logging
+from utils.logger import make_logger
 log = logging.getLogger(__name__)
 
 import argparse
@@ -28,7 +29,10 @@ def main(method_, raw_dir_, supp_dir_, config_):
     inputs = raw_dir_
     outputs = supp_dir_
     n_workers = config.segmentation.num_workers
-
+    logger = make_logger(
+        log_dir=outputs,
+        log_level=20,
+    )
     assert len(config_.segmentation.channels) > 0, "At least one channel must be specified"
 
 
@@ -44,7 +48,7 @@ def main(method_, raw_dir_, supp_dir_, config_):
         sites = get_im_sites(inputs)
 
     segment_sites = [site for site in sites if os.path.exists(os.path.join(inputs, "%s.npy" % site))]
-    print(segment_sites)
+    # print(segment_sites)
     sep = np.linspace(0, len(segment_sites), n_workers + 1).astype(int)
 
     processes = []

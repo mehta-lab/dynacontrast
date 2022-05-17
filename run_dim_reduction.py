@@ -122,7 +122,7 @@ def umap_transform(input_dir, output_dir, weights_dir, prefix, suffix='_after'):
 
 
 def fit_umap(train_data, embed_dir, labels, label_col, fraction=0.1, seed=0,
-             n_nbrs=(15,), a_s=(1.58,), b_s=(0.9,), dist_metric='euclidean', n_runs=1):
+             n_nbrs=(15,), a_s=(1.58,), b_s=(0.9,), dist_metric='cosine', n_runs=1):
     """Fit UMAP model to latent vectors and save the reduced vectors (embeddings), output UMAP plot
     Args:
         train_data (np.array): 2D array of training data (samples, features),

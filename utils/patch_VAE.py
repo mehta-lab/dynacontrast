@@ -4,7 +4,7 @@ import cv2
 from dask import array as da
 
 from SingleCellPatch.patch_utils import cv2_fn_wrapper
-
+import logging
 os.environ['KERAS_BACKEND'] = 'tensorflow'
 import pickle
 import torch
@@ -24,6 +24,7 @@ from dataset.dataset import ImageDataset
 import HiddenStateExtractor.resnet as resnet
 
 NETWORK_MODULE = 'run_training'
+log = logging.getLogger('dynacontrast.log')
 
 def extract_patches(raw_folder: str,
                     supp_folder: str,
@@ -65,9 +66,9 @@ def extract_patches(raw_folder: str,
             print("Site data not found %s" % site_segmentation_path, flush=True)
         if not os.path.exists(site_supp_files_folder):
             print("Site supp folder not found %s" % site_supp_files_folder, flush=True)
-        else:
-            print("Building patches %s" % site_path, flush=True)
-
+        # else:
+            # print("Building patches %s" % site_path, flush=True)
+        try:
             process_site_extract_patches(site_path, 
                                          site_segmentation_path, 
                                          site_supp_files_folder,
@@ -77,6 +78,11 @@ def extract_patches(raw_folder: str,
                                          reload=reload,
                                          skip_boundary=skip_boundary,
                                          **kwargs)
+        except Exception as e:
+            log.error('Extracting patches failed for position {}. '.format(site))
+            log.exception('')
+            print('Extracting patches failed for position {}. '.format(site))
+            raise e
     return
 
 
@@ -174,6 +180,8 @@ def pool_positions(raw_folder: str,
         # print(site)
         supp_files_folder = os.path.join(supp_folder, '%s-supps' % site[:2], '%s' % site)
         meta_path = os.path.join(supp_files_folder, 'patch_meta.csv')
+        if not os.path.isfile(meta_path): # no patch metadata is saved if no cell is detected
+            continue
         df_meta_site = pd.read_csv(meta_path, index_col=0, converters={
             'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
         # offset trajectory ids to make it unique
@@ -186,7 +194,7 @@ def pool_positions(raw_folder: str,
     meta_path = os.path.join(supp_folder, '%s-supps' % well, 'patch_meta.csv')
     df_meta.to_csv(meta_path, sep=',')
     dataset = combine_patches(df_meta, supp_folder, input_shape=patch_shape)
-    assert len(dataset) == len(df_meta), 'Number of patches and rows in metadata are not consistent.'
+    assert len(dataset) == len(df_meta), 'Number of patches {} and rows in metadata {} do not match.'.format(len(dataset), len(df_meta))
     # dataset = zscore(dataset, channel_mean=None, channel_std=None).astype(np.float32)
     # output_fname = os.path.join(raw_folder, 'cell_patches_datasetnorm.zarr')
     # print('saving {}...'.format(output_fname))
