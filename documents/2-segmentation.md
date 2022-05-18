@@ -10,7 +10,7 @@ The relevant CLI is:
 python run_segmentation.py -m <method> -c <path to config file>
 ```
 
-where <method> is one of "segmentation" or "instance_segmentation" and
+where <method> is one of "segmentation" or "find_cells_mp" and
 where <path to config file> is the full path to a .yml configuration file as specified in `.configs/config_example.yml`
 
 --------------------------------------------
@@ -43,12 +43,12 @@ To "raw" directory
 - writes `<fov>_NNpred.png`
 
 -------------------------------------------
-#### **method = "instance_segmentation"**
+#### **method = "find_cells_mp"**
 
 This method selection will use the raw data and the probability map to generate labels and mappings to cell-instances from the segmentation
 
 ```text
-python run_segmentation.py -m instance_segmentation -c myconfig.yml
+python run_segmentation.py -m find_cells_mp -c myconfig.yml
 ```
 
 instance segmentation is done using the clustering method DBSCAN (sklearn.cluster).  The process is as follows:

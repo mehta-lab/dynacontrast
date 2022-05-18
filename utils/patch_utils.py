@@ -2,8 +2,6 @@ import os
 import cv2
 import natsort
 import numpy as np
-
-
 def within_range(r, pos):
     """ Check if a given position is in window
 
@@ -175,3 +173,4 @@ def get_cell_rect_angle(tm):
     if w < h:
         ang = ang - 90
     return ang
+

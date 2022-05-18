@@ -9,15 +9,14 @@ import numpy as np
 import cv2
 import os
 import pickle
-import torch as t
 import torch
 import h5py
 import pandas as pd
 from NNsegmentation.models import Segment
 from NNsegmentation.data import predict_whole_map
-from SingleCellPatch.instance_clustering import instance_clustering
-from SingleCellPatch.patch_utils import within_range
-from SingleCellPatch.generate_trajectories import frame_matching
+from preprocess.find_cells import find_cells_2D
+from utils.patch_utils import within_range
+from preprocess.track import frame_matching
 import matplotlib
 from matplotlib import cm
 matplotlib.use('AGG')
@@ -27,11 +26,9 @@ import seaborn as sns
 import imageio
 from sklearn.decomposition import PCA
 from scipy.stats import pearsonr, spearmanr
-from HiddenStateExtractor.vq_vae import VQ_VAE, CHANNEL_MAX, CHANNEL_VAR, CHANNEL_RANGE, prepare_dataset, rescale
-from HiddenStateExtractor.naive_imagenet import read_file_path, DATA_ROOT
-from HiddenStateExtractor.morphology_clustering import select_clean_trajecteories, Kmean_on_short_trajs
-from HiddenStateExtractor.movement_clustering import save_traj
-import statsmodels.api as sm
+from train.vq_vae import VQ_VAE, rescale
+from train.deprecated.naive_imagenet import DATA_ROOT
+from train.movement_clustering import save_traj
 import scipy
 
 color_mg = np.array([240, 94, 56], dtype='uint8')
@@ -180,7 +177,7 @@ cv2.imwrite('/home/michaelwu/supp_fig1_nn_predictions.png', mat)
 
 # Fig 2 B1
 # Instance separation
-cells, positions, positions_labels = instance_clustering(NN_predictions, fg_thr=0.2)
+cells, positions, positions_labels = find_cells_2D(NN_predictions, fg_thr=0.2)
 mg_cell_positions, non_mg_cell_positions, other_cells = cells
 mat = np.zeros((raw_input.shape[0], raw_input.shape[1], 3), dtype='uint8')
 mat[:, :] = (raw_input / 256).astype('uint8')
@@ -264,8 +261,8 @@ frame0 = raw_input_stack[0, :, :, 0:1]
 frame1 = raw_input_stack[1, :, :, 0:1]
 pred0 = NN_predictions_stack[0]
 pred1 = NN_predictions_stack[1]
-res0 = instance_clustering(pred0, fg_thr=0.2)
-res1 = instance_clustering(pred1, fg_thr=0.2)
+res0 = find_cells_2D(pred0, fg_thr=0.2)
+res1 = find_cells_2D(pred1, fg_thr=0.2)
 
 cell_positions = {0: res0[0], 1: res1[0]}
 cell_pixel_assignments = {0: res0[1:], 1: res1[1:]}
@@ -393,14 +390,14 @@ cs = [0, 1]
 input_shape = (128, 128)
 gpu = True
 # Order for `dataset`, `relations`
-fs_ = pickle.load(open('./HiddenStateExtractor/file_paths_bkp.pkl', 'rb'))
+fs_ = pickle.load(open('./train/file_paths_bkp.pkl', 'rb'))
 # Order for `trajs`
-fs = sorted(pickle.load(open('./HiddenStateExtractor/file_paths_bkp.pkl', 'rb')))
+fs = sorted(pickle.load(open('./train/file_paths_bkp.pkl', 'rb')))
 dataset = torch.load('StaticPatchesAll.pt')
 dataset = rescale(dataset)
 model = VQ_VAE(alpha=0.0005, gpu=gpu)
 model = model.cuda()
-model.load_state_dict(torch.load('./HiddenStateExtractor/save_0005_bkp4.pt'))
+model.load_state_dict(torch.load('./train/save_0005_bkp4.pt'))
 
 sample_fs = ['/mnt/comp_micro/Projects/CellVAE/Data/StaticPatches/D3-Site_4/1_45.h5',
              '/mnt/comp_micro/Projects/CellVAE/Data/StaticPatches/D3-Site_6/3_20.h5',
@@ -440,7 +437,7 @@ pca = PCA(0.5)
 dats_ = pca.fit_transform(dats)
 with open('./save_0005_bkp4_latent_space_PCAed.pkl', 'wb') as f:
   pickle.dump(dats_, f)
-trajs = pickle.load(open('./HiddenStateExtractor/trajectory_in_inds.pkl', 'rb'))
+trajs = pickle.load(open('./train/trajectory_in_inds.pkl', 'rb'))
 sizes = pickle.load(open(DATA_ROOT + '/Data/EncodedSizes.pkl', 'rb'))
 ss = [sizes[f][0] for f in fs]
 
@@ -839,9 +836,9 @@ plt.savefig('/home/michaelwu/supp_fig5_distri_PC2.png', dpi=300)
 # KDE plot of PC1/speed
 feat = 'save_0005_before'
 dataset = torch.load('StaticPatchesAll.pt')
-fs_ = pickle.load(open('./HiddenStateExtractor/file_paths_bkp.pkl', 'rb'))
-fs = sorted(pickle.load(open('./HiddenStateExtractor/file_paths_bkp.pkl', 'rb')))
-trajs = pickle.load(open('./HiddenStateExtractor/trajectory_in_inds.pkl', 'rb'))
+fs_ = pickle.load(open('./train/file_paths_bkp.pkl', 'rb'))
+fs = sorted(pickle.load(open('./train/file_paths_bkp.pkl', 'rb')))
+trajs = pickle.load(open('./train/trajectory_in_inds.pkl', 'rb'))
 dats_ = pickle.load(open('./save_0005_bkp4_latent_space_PCAed.pkl', 'rb'))
 sizes = pickle.load(open(DATA_ROOT + '/Data/EncodedSizes.pkl', 'rb'))
 

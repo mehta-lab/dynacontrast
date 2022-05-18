@@ -9,17 +9,17 @@ import pandas as pd
 import scipy as sp
 import seaborn as sns
 from sklearn import metrics
-from sklearn.model_selection import GridSearchCV, GroupKFold, GroupShuffleSplit, StratifiedGroupKFold
-from sklearn.linear_model import LogisticRegressionCV, LogisticRegression
+from sklearn.model_selection import StratifiedGroupKFold
+from sklearn.linear_model import LogisticRegression
 from matplotlib import pyplot as plt
-from plot_scripts.plotting import plot_umap
-from plot_scripts.clustering_workflows import ClusteringWorkflow
-from SingleCellPatch.patch_utils import im_adjust
+from plot.plotting import plot_umap
+from plot.clustering_workflows import ClusteringWorkflow
+from utils.patch_utils import im_adjust
 
 # from torch.utils.data import DataLoader
 # from dataset.dataset import TripletDataset
 # from run_training import train_with_loader
-# from HiddenStateExtractor.resnet import LogisticRegression as LogisticRegressionNN
+# from train.resnet import LogisticRegression as LogisticRegressionNN
 def load_meta(dataset_dirs, splits=('train', 'val', 'test')):
     df_meta_all = {}
     for split in splits:
@@ -124,7 +124,7 @@ def plot_linear_eval(weights_dirs, nn=False):
     for weights_dir in weights_dirs:
         model_name = os.path.basename(weights_dir)
         if nn:
-            from plot_scripts import tflogs2df
+            from plot import tflogs2df
             learn_rate = 0.1
             tflog_dir = os.path.join(weights_dir, 'evaluation_lr{}'.format(learn_rate))
             log_df = tflogs2df.main(

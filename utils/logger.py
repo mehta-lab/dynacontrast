@@ -11,16 +11,10 @@ def make_logger(log_dir, logger_name='dynacontrast.log', log_level=20):
     :return logging instance logger
     """
     log_path = os.path.join(log_dir, logger_name)
-    log_format = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    )
-
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(log_level)
-    logger.propagate = False
-
-    file_handler = logging.FileHandler(log_path)
-    file_handler.setFormatter(log_format)
-    file_handler.setLevel(log_level)
-    logger.addHandler(file_handler)
+    logging.basicConfig(filename=log_path,
+                        filemode='w',
+                        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                        datefmt='%H:%M:%S',
+                        level=log_level)
+    logger = logging.getLogger()
     return logger

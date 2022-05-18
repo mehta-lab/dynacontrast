@@ -53,7 +53,7 @@ You can find the template and the example config file in `examples` directory in
 
 Extract single cell patches from single cell instance segmentation maps, then connect them into trajectories:
 
-	python run_patch.py -m "extract_patches" -c <path-to-your-config-yaml>
+	python run_patch.py -m "get_patches_mp" -c <path-to-your-config-yaml>
 	python run_patch.py -m "build_trajectories" -c <path-to-your-config-yaml>
 
 Assemble extracted patches into a single zarr array:

@@ -3,127 +3,21 @@ import os
 import cv2
 from dask import array as da
 
-from SingleCellPatch.patch_utils import cv2_fn_wrapper
+from utils.patch_utils import cv2_fn_wrapper
 import logging
 os.environ['KERAS_BACKEND'] = 'tensorflow'
-import pickle
-import torch
 import numpy as np
 import pandas as pd
 import importlib
 import inspect
 import time
 from utils.config_reader import YamlReader
-from torch.utils.data import DataLoader
-from tqdm import tqdm
 import zarr
-from SingleCellPatch.extract_patches import process_site_extract_patches
-from SingleCellPatch.generate_trajectories import process_site_build_trajectory, process_well_generate_trajectory_relations
-from utils.train_utils import zscore, zscore_patch, split_data
-from dataset.dataset import ImageDataset
-import HiddenStateExtractor.resnet as resnet
+from preprocess.track import process_well_generate_trajectory_relations
+from utils.train_utils import zscore_patch, split_data
 
 NETWORK_MODULE = 'run_training'
 log = logging.getLogger('dynacontrast.log')
-
-def extract_patches(raw_folder: str,
-                    supp_folder: str,
-                    # channels: list,
-                    sites: list,
-                    config: YamlReader,
-                    **kwargs):
-    """ Helper function for patch extraction
-
-    Wrapper method `process_site_extract_patches` will be called, which
-    extracts individual cells from static frames for each site.
-
-    Results will be saved in the supplementary data folder, including:
-        "stacks_*.pkl": single cell patches for each time slice
-
-    Args:
-        raw_folder (str): folder for raw data, segmentation and
-            summarized results
-        supp_folder (str): folder for supplementary data
-        sites (list of str): list of site names
-        config (YamlReader): config file supplied at CLI
-    """
-    channels = config.patch.channels
-
-    assert len(channels) > 0, "At least one channel must be specified"
-
-    window_size = config.patch.window_size
-    save_fig = config.patch.save_fig
-    reload = config.patch.reload
-    skip_boundary = config.patch.skip_boundary
-
-    for site in sites:
-        site_path = os.path.join(raw_folder + '/' + site + '.npy')
-        site_segmentation_path = os.path.join(raw_folder, '%s_NNProbabilities.npy' % site)
-        site_supp_files_folder = os.path.join(supp_folder, '%s-supps' % site[:2], '%s' % site)
-        if not os.path.exists(site_path):
-            print("Site data not found %s" % site_path, flush=True)
-        if not os.path.exists(site_segmentation_path):
-            print("Site data not found %s" % site_segmentation_path, flush=True)
-        if not os.path.exists(site_supp_files_folder):
-            print("Site supp folder not found %s" % site_supp_files_folder, flush=True)
-        # else:
-            # print("Building patches %s" % site_path, flush=True)
-        try:
-            process_site_extract_patches(site_path, 
-                                         site_segmentation_path, 
-                                         site_supp_files_folder,
-                                         window_size=window_size,
-                                         channels=channels,
-                                         save_fig=save_fig,
-                                         reload=reload,
-                                         skip_boundary=skip_boundary,
-                                         **kwargs)
-        except Exception as e:
-            log.error('Extracting patches failed for position {}. '.format(site))
-            log.exception('')
-            print('Extracting patches failed for position {}. '.format(site))
-            raise e
-    return
-
-
-def build_trajectories(summary_folder: str,
-                       supp_folder: str,
-                       # channels: list,
-                       sites: list,
-                       config: YamlReader,
-                       **kwargs):
-    """ Helper function for trajectory building
-
-    Wrapper method `process_site_build_trajectory` will be called, which 
-    connects and generates trajectories from individual cell identifications.
-
-    Results will be saved in the supplementary data folder, including:
-        "cell_traj.pkl": list of trajectories and list of trajectory positions
-            trajectories are dict of t_point: cell ID
-            trajectory positions are dict of t_point: cell center position
-
-    Args:
-        summary_folder (str): folder for raw data, segmentation and
-            summarized results
-        supp_folder (str): folder for supplementary data
-        channels (list of int): indices of channels used for segmentation
-            (not used)
-        model_path (str, optional): path to model weight (not used)
-        sites (list of str): list of site names
-
-    """
-
-    for site in sites:
-        site_path = os.path.join(summary_folder + '/' + site + '.npy')
-        site_supp_files_folder = os.path.join(supp_folder, '%s-supps' % site[:2], '%s' % site)
-        if not os.path.exists(site_path) or not os.path.exists(site_supp_files_folder):
-            print("Site data not found %s" % site_path, flush=True)
-        else:
-            print("Building trajectories %s" % site_path, flush=True)
-            process_site_build_trajectory(site_supp_files_folder,
-                                          min_len=config.patch.min_length,
-                                          track_dim=config.patch.track_dim)
-    return
 
 
 def pool_positions(raw_folder: str,
@@ -184,6 +78,8 @@ def pool_positions(raw_folder: str,
             continue
         df_meta_site = pd.read_csv(meta_path, index_col=0, converters={
             'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
+        if len(df_meta_site) == 0: # if no cell patch was cropped, skip the position
+            continue
         # offset trajectory ids to make it unique
         for col in df_meta_site.columns:
             if col in traj_id_offsets:
@@ -321,93 +217,6 @@ def import_object(module_name, obj_name, obj_type='class'):
     except ImportError:
         raise
 
-def encode_patches(raw_dir: str,
-                   supp_folder: str,
-                   sites: list,
-                   config_: YamlReader,
-                   gpu: int=0,
-                   **kwargs):
-    """ Wrapper method for patch encoding
-
-    This function loads prepared dataset and applies trained VAE to encode 
-    static patches for each well. 
-
-    Resulting latent vectors will be saved in raw_dir:
-        train_embeddings.npy
-        val_embeddings.npy
-
-    Args:
-        raw_folder (str): folder for raw data, segmentation and
-            summarized results
-        supp_folder (str): folder for supplementary data
-        sites (list): list of FOVs to process
-        config_ (YamlReader): Reads fields from the "INFERENCE" category
-
-    """
-    model_dir = config_.inference.weights
-    channels = config_.inference.channels
-    network = config_.inference.network
-    network_width = config_.inference.network_width
-    batch_size = config_.inference.batch_size
-    num_workers = config_.inference.num_workers
-    normalization = config_.inference.normalization
-    projection = config_.inference.projection
-    splits = config_.inference.splits
-
-    assert len(channels) > 0, "At least one channel must be specified"
-
-    model_name = os.path.basename(model_dir)
-    if projection:
-        output_dir = os.path.join(raw_dir, model_name + '_proj')
-        encode_layer = 'z'
-    else:
-        output_dir = os.path.join(raw_dir, model_name)
-        encode_layer = 'h'
-    os.makedirs(output_dir, exist_ok=True)
-    datasets = {}
-    for split in splits:
-        if normalization == 'dataset':
-            datasets[split] = zarr.open(os.path.join(raw_dir, 'cell_patches_datasetnorm_{}.zarr'.format(split)))
-        elif normalization == 'patch':
-            # train_set_sync = zarr.ProcessSynchronizer(os.path.join(raw_dir, 'cell_patches_train.sync'))
-            datasets[split] = zarr.open(os.path.join(raw_dir, 'cell_patches_{}.zarr'.format(split)))
-        else:
-            raise ValueError('Parameter "normalization" must be "dataset" or "patch"')
-        datasets[split] = ImageDataset(datasets[split])
-    device = torch.device('cuda:%d' % gpu)
-    print('Encoding images using gpu {}...'.format(gpu))
-    # Only ResNet is available now
-    if 'ResNet' not in network:
-        raise ValueError('Network {} is not available'.format(network))
-
-    for data_name, dataset in datasets.items():
-        network_cls = getattr(resnet, 'EncodeProject')
-        model = network_cls(arch=network, num_inputs=len(channels), width=network_width)
-        model = model.to(device)
-        # print(model)
-        model.load_state_dict(torch.load(os.path.join(model_dir, 'model.pt'), map_location=device))
-        model.eval()
-        data_loader = DataLoader(dataset=dataset,
-                                  batch_size=batch_size,
-                                  shuffle=False,
-                                  num_workers=num_workers,
-                                  pin_memory=True,
-                                  )
-        h_s = []
-        with tqdm(data_loader, desc='inference batch') as batch_pbar:
-            for batch in batch_pbar:
-                print(batch.shape)
-                batch = batch.to(device)
-                code = model.encode(batch, out=encode_layer).cpu().data.numpy().squeeze()
-                print(code.shape)
-                h_s.append(code)
-        dats = np.concatenate(h_s, axis=0)
-        output_fname = '{}_embeddings.npy'.format(data_name)
-        print(f"\tsaving {os.path.join(output_dir, output_fname)}")
-        with open(os.path.join(output_dir, output_fname), 'wb') as f:
-            np.save(f, dats)
-
-
 
 def concat_relations(labels, offsets):
     """combine relation dictionaries from multiple datasets
@@ -447,18 +256,20 @@ def combine_patches(df_meta,
 
     """
     dataset = []
-    pos_ids = df_meta['position'].unique()
-    t_points = df_meta['time'].unique()
-    slices = df_meta['slice'].unique()
-    for pos_idx in pos_ids:
+    # print(df_meta[:10])
+    df_ptz = df_meta[['position', 'time', 'slice']].drop_duplicates()
+    # pos_ids = df_meta['position'].unique()
+    # t_points = df_meta['time'].unique()
+    # slices = df_meta['slice'].unique()
+    for pos_idx, t, z in df_ptz.to_numpy():
         supp_files_folder = os.path.join(supp_folder, 'im-supps', 'img_p{:03}'.format(pos_idx))
-        for t in t_points:
-            for z in slices:
-                stack_path_site = os.path.join(supp_files_folder, 'patches_t{}_z{}.npy'.format(t, z))
-                print(f"\tloading data {stack_path_site}")
-                with open(stack_path_site, 'rb') as f:
-                    cell_patches = np.load(f)
-                resized_dat = cv2_fn_wrapper(cv2.resize, cell_patches, input_shape)
-                dataset.append(resized_dat)
+        # for t in t_points:
+        #     for z in slices:
+        stack_path_site = os.path.join(supp_files_folder, 'patches_t{}_z{}.npy'.format(t, z))
+        # print(f"\tloading data {stack_path_site}")
+        with open(stack_path_site, 'rb') as f:
+            cell_patches = np.load(f)
+        resized_dat = cv2_fn_wrapper(cv2.resize, cell_patches, input_shape)
+        dataset.append(resized_dat)
     dataset = np.concatenate(dataset, axis=0)
     return dataset

@@ -1,46 +1,36 @@
 # bchhun, {2020-02-21}
 
-from utils.segmentation import segmentation, instance_segmentation
-from SingleCellPatch.patch_utils import get_im_sites
-from utils.segmentation_validation import segmentation_validation_michael
+from preprocess.find_cells import find_cells_mp
+from utils.patch_utils import get_im_sites
 from multiprocessing import Process
 import os
 import numpy as np
-import logging
 from utils.logger import make_logger
-log = logging.getLogger(__name__)
 
 import argparse
 from utils.config_reader import YamlReader
 
 
 class Worker(Process):
-    def __init__(self, inputs, method='segmentation'):
+    def __init__(self, inputs):
         super().__init__()
         self.inputs = inputs
-        self.method = method
 
     def run(self):
-        log.info(f"running instance segmentation")
-        instance_segmentation(*self.inputs, rerun=True)
+        find_cells_mp(*self.inputs, rerun=True)
 
-def main(method_, raw_dir_, supp_dir_, config_):
-    method = method_
+def main(raw_dir_, supp_dir_, config_):
     inputs = raw_dir_
     outputs = supp_dir_
     n_workers = config.segmentation.num_workers
+    os.makedirs(outputs, exist_ok=True)
     logger = make_logger(
         log_dir=outputs,
         log_level=20,
     )
+    logger.info('Finding cells in {}'.format(inputs))
     assert len(config_.segmentation.channels) > 0, "At least one channel must be specified"
 
-
-    # instance segmentation requires raw (stack, NNprob), supp (to write outputs) to be defined
-    if method != 'instance_segmentation':
-        raise NotImplementedError(f"Method flag {method} not implemented. Use Cellpose to generate cell segmentation")
-
-    # all methods all require
     if config_.segmentation.fov:
         sites = config.segmentation.fov
     else:
@@ -55,7 +45,7 @@ def main(method_, raw_dir_, supp_dir_, config_):
     for i in range(n_workers):
         _sites = segment_sites[sep[i]:sep[i + 1]]
         args = (inputs, outputs, _sites)
-        process = Worker(args, method=method)
+        process = Worker(args)
         process.start()
         processes.append(process)
     for p in processes:
@@ -70,14 +60,6 @@ def parse_args():
     """
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        '-m', '--method',
-        type=str,
-        required=False,
-        choices=['segmentation', 'instance_segmentation'],
-        default='instance_segmentation',
-        help="Method: 'segmentation' or 'instance_segmentation'",
-    )
 
     parser.add_argument(
         '-c', '--config',
@@ -97,4 +79,4 @@ if __name__ == '__main__':
 
     # batch run
     for (raw_dir, supp_dir) in list(zip(config.segmentation.raw_dirs, config.segmentation.supp_dirs)):
-        main(arguments.method, raw_dir, supp_dir, config)
+        main(raw_dir, supp_dir, config)

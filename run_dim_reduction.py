@@ -6,7 +6,7 @@ from sklearn.decomposition import PCA
 import argparse
 import matplotlib
 
-from plot_scripts.plotting import plot_umap, zoom_axis
+from plot.plotting import plot_umap, zoom_axis
 
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
@@ -272,7 +272,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '-i', '--input',
+        '-i', '--io',
         nargs='+',
         type=str,
         required=True,

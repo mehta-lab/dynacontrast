@@ -2,7 +2,7 @@ from collections import OrderedDict
 import torchvision.models as models
 import torch
 from torch import nn
-from HiddenStateExtractor.losses import AllTripletMiner
+from train.losses import AllTripletMiner
 
 class ResNetEncoder(models.resnet.ResNet):
     """Wrapper for TorchVison ResNet Model

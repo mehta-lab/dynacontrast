@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from scipy import ndimage
 # import dask.delayed as delay
-from SingleCellPatch.patch_utils import cv2_fn_wrapper
+from utils.patch_utils import cv2_fn_wrapper
 
 # @delay
 def transform_matrix_offset_center(matrix, x, y):

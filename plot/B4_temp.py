@@ -8,13 +8,13 @@ matplotlib.use('AGG')
 from matplotlib import cm
 import matplotlib.pyplot as plt
 import seaborn as sns
-from HiddenStateExtractor.vq_vae import VQ_VAE, CHANNEL_MAX, CHANNEL_VAR, CHANNEL_RANGE, prepare_dataset, rescale
+from train.vq_vae import VQ_VAE, CHANNEL_MAX, CHANNEL_VAR, CHANNEL_RANGE, prepare_dataset, rescale
 from sklearn.decomposition import PCA
 
 sites = ['B4-Site_%d' % i for i in [0, 2, 3, 5, 6]]
 dats = pickle.load(open('./save_0005_bkp4.pkl', 'rb'))
-fs = pickle.load(open('./HiddenStateExtractor/file_paths_bkp.pkl', 'rb'))
-trajs = pickle.load(open('./HiddenStateExtractor/trajectory_in_inds.pkl', 'rb'))
+fs = pickle.load(open('./train/file_paths_bkp.pkl', 'rb'))
+trajs = pickle.load(open('./train/trajectory_in_inds.pkl', 'rb'))
 
 sites = ['B4-Site_%d' % i for i in [0, 2, 3, 5, 6]]
 B4_dats = pickle.load(open('./save_0005_bkp4_B4.pkl', 'rb'))
@@ -47,7 +47,7 @@ B4_dats = np.stack([B4_dats[f] for f in B4_fs], 0).reshape((len(B4_fs), -1))
 #   if r < 0.2:
 #     valid_ts.append(t)
 # B4_trajs = {t: B4_trajs[t] for t in valid_ts if len(B4_trajs[t]) > 30}
-B4_trajs = pickle.load(open('./HiddenStateExtractor/B4_trajectory_in_inds.pkl', 'rb'))
+B4_trajs = pickle.load(open('./train/B4_trajectory_in_inds.pkl', 'rb'))
 
 pca = PCA(0.5)
 dats_ = pca.fit_transform(dats)
@@ -60,7 +60,7 @@ gpu = False
 B4_dataset = torch.load('../data_temp/B4_all_adjusted_static_patches.pt')
 B4_dataset = rescale(B4_dataset)
 model = VQ_VAE(alpha=0.0005, gpu=gpu)
-model.load_state_dict(torch.load('./HiddenStateExtractor/save_0005_bkp4.pt', map_location='cpu'))
+model.load_state_dict(torch.load('./train/save_0005_bkp4.pt', map_location='cpu'))
 
 sample_fs = ['/data/michaelwu/data_temp/B4-supps/B4-Site_5/35_13.png',
              '/data/michaelwu/data_temp/B4-supps/B4-Site_0/149_82.png',

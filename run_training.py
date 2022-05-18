@@ -16,8 +16,8 @@ from torch.utils.tensorboard import SummaryWriter
 from utils.train_utils import EarlyStopping, DataLoader
 from dataset.dataset import TripletIterDataset, worker_init_fn
 from dataset.augmentation import augment_img
-from HiddenStateExtractor.losses import AllTripletMiner, NTXent
-from HiddenStateExtractor.resnet import EncodeProject
+from train.losses import AllTripletMiner, NTXent
+from train.resnet import EncodeProject
 
 from utils.config_reader import YamlReader
 

@@ -2,23 +2,23 @@
 
 ## Purpose
 
-This document describes the process of extracting patches of single cells identified from the segmentation step.  It uses the metadata generated from `segmentation` and `instance_segmentation`
+This document describes the process of extracting patches of single cells identified from the segmentation step.  It uses the metadata generated from `segmentation` and `find_cells_mp`
 
 The relevant CLI is:
 ```text
 python run_patch.py -m <method> -c <path to config file>
 ```
 
-where <method> is one of "extract_patches" or "build_trajectories" and 
+where <method> is one of "get_patches_mp" or "build_trajectories" and 
 where <path to config file> is the full path to a .yml configuration file as specified in `.configs/config_example.yml`
 
 --------------------------------------------
-#### **method = "extract_patches"**
+#### **method = "get_patches_mp"**
 
 This method generates a `stacks_<timepoint>.pkl` file and 
 
 ```text
-python run_patch.py -m extract_patches -c myconfig.yml
+python run_patch.py -m get_patches_mp -c myconfig.yml
 ```
 
 where `myconfig.yml` contains fields under `patch`:
@@ -34,8 +34,8 @@ From "raw" directory
 - `<fov>_NNProbabilities.npy` file generated from `run_segmentation.py -m segmentation`
 
 From "<fov>-supps/<fov>" directory
-- `cell_pixel_assignments.pkl` file generated from `run_segmentation.py -m instance_segmentation`
-- `cell_positions.pkl` file generated from `run_segmentation.py -m instance_segmentation`
+- `cell_pixel_assignments.pkl` file generated from `run_segmentation.py -m find_cells_mp`
+- `cell_positions.pkl` file generated from `run_segmentation.py -m find_cells_mp`
 
 **outputs**
 To "<fov>-supps/<fov>" directory

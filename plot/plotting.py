@@ -1,5 +1,8 @@
 import numpy as np
 import matplotlib
+
+from utils.patch_utils import im_adjust
+
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 
@@ -54,3 +57,21 @@ def zoom_axis(x, y, ax, zoom_cutoff=1):
     ylim = [np.percentile(y, zoom_cutoff), np.percentile(y, 100 - zoom_cutoff)]
     ax.set_xlim(left=xlim[0], right=xlim[1])
     ax.set_ylim(bottom=ylim[0], top=ylim[1])
+
+
+def save_single_cell_im(output_mat,
+                        im_path):
+    """ Plot single cell patch (unmasked, masked, segmentation mask)
+    """
+    n_rows = 1
+    n_cols = len(output_mat)
+    fig, ax = plt.subplots(n_rows, n_cols, squeeze=False)
+    ax = ax.flatten()
+    fig.set_size_inches((15, 5 * n_rows))
+    axis_count = 0
+    for im in output_mat:
+        ax[axis_count].imshow(np.squeeze(im_adjust(im)), cmap='gray')
+        ax[axis_count].axis('off')
+        axis_count += 1
+    fig.savefig(im_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)

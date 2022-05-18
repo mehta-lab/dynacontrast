@@ -1,4 +1,4 @@
-from utils.patch_VAE import pool_datasets
+from preprocess.patch2zarr import pool_datasets
 import argparse
 from utils.config_reader import YamlReader
 
