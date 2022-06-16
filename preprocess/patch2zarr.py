@@ -1,8 +1,7 @@
 import os
-
 import cv2
+import glob
 from dask import array as da
-
 from utils.patch_utils import cv2_fn_wrapper
 import logging
 os.environ['KERAS_BACKEND'] = 'tensorflow'
@@ -47,7 +46,6 @@ def pool_positions(raw_folder: str,
     splits = ('all',)
     split_ratio = None
     split_cols = None
-    label_col = None
     patch_shape = (128, 128)
     if hasattr(config.patch, 'splits'):
         splits = config.patch.splits
@@ -55,8 +53,6 @@ def pool_positions(raw_folder: str,
         split_ratio = config.patch.split_ratio
     if hasattr(config.patch, 'split_cols'):
         split_cols = config.patch.split_cols
-    if hasattr(config.patch, 'label_col'):
-        label_col = config.patch.label_col
     if hasattr(config.patch, 'size'):
         patch_shape = (config.patch.size, config.patch.size)
     if type(splits) is str:
@@ -96,25 +92,15 @@ def pool_positions(raw_folder: str,
     # print('saving {}...'.format(output_fname))
     # zarr.save(output_fname, dataset)
     dataset = zscore_patch(dataset).astype(np.float32)
-    if label_col is None:
-        label = np.arange(len(dataset))
-    else:
-        _, label = process_well_generate_trajectory_relations(df_meta, track_dim='slice')
-    print('len(labels):', len(label))
     print('len(dataset):', len(dataset))
-    assert len(dataset) == len(label), 'Number of patches and labels are not consistent.'
-    datasets, labels, df_metas = split_data(dataset, label, df_meta, splits=splits, split_cols=split_cols,
+    datasets, df_metas = split_data(dataset, df_meta, splits=splits, split_cols=split_cols,
                        val_split_ratio=split_ratio, seed=0)
     for split in splits:
         patch_fname = os.path.join(raw_folder, 'cell_patches_{}.zarr'.format(split))
-        label_fname = os.path.join(raw_folder, 'patch_labels_{}.npy'.format(split))
         meta_fname = os.path.join(raw_folder, 'patch_meta_{}.csv'.format(split))
         print('saving {}...'.format(patch_fname))
-        data_zar = zarr.open(patch_fname, mode='w', shape=datasets[split].shape, chunks=datasets[split][0].shape, dtype=np.float32)
+        data_zar = zarr.open(patch_fname, mode='w', shape=datasets[split].shape, chunks=datasets[split][0:1].shape, dtype=np.float32)
         data_zar[:] = datasets[split]
-        print('saving {}...'.format(label_fname))
-        with open(label_fname, 'wb') as f:
-            np.save(f, labels[split])
         df_metas[split].to_csv(meta_fname, sep=',')
     return
 
@@ -135,63 +121,56 @@ def pool_datasets(config):
         save_mask (bool, optional): if to read & save dataset mask
 
     """
+    splits = ('all',)
+    val_split_ratio = None
+    split_cols = None
+    if hasattr(config.data_pooling, 'splits'):
+        splits = config.data_pooling.splits
+    if hasattr(config.data_pooling, 'split_ratio'):
+        val_split_ratio = config.data_pooling.split_ratio
+    if hasattr(config.data_pooling, 'split_cols'):
+        split_cols = config.data_pooling.split_cols
+    if type(splits) is str:
+        splits = [splits]
+    if type(splits) is list:
+        splits = tuple(splits)
     raw_dirs = config.data_pooling.raw_dirs
     supp_dirs = config.data_pooling.supp_dirs
     dst_dir = config.data_pooling.dst_dir
-    val_split_ratio = config.training.val_split_ratio
-    fname_suffix = ['', '_datasetnorm']
-    labels = []
-    id_offsets = [0]
+    datasets = []
     df_meta_all = []
     for raw_dir, supp_dir in zip(raw_dirs, supp_dirs):
-        label = da.from_zarr(os.path.join(raw_dir, 'patch_labels.zarr')).astype(np.int64)
-        labels.append(label)
-        meta_path = os.path.join(supp_dir, 'im-supps', 'patch_meta.csv')
-        df_meta = pd.read_csv(meta_path, index_col=0, converters={
+        patch_fname = os.path.join(raw_dir, 'cell_patches_all.zarr')
+        meta_fname = os.path.join(raw_dir, 'patch_meta_all.csv')
+        df_meta = pd.read_csv(meta_fname, index_col=0, converters={
             'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
         df_meta['data_dir'] = os.path.dirname(raw_dir)
         df_meta_all.append(df_meta)
-        id_offsets.append(len(label))
+        t0 = time.time()
+        dataset = da.from_zarr(patch_fname)
+        datasets.append(dataset)
+        t1 = time.time()
+        print('loading dataset takes:', t1 - t0)
+        print('dataset.shape:', dataset.shape)
+    dataset = da.concatenate(datasets, axis=0)
     df_meta_all = pd.concat(df_meta_all, axis=0)
     df_meta_all.reset_index(drop=True, inplace=True)
-    id_offsets = id_offsets[:-1]
-    labels = concat_relations(labels, offsets=id_offsets)
-    print('len(labels):', len(labels))
-    for suffix in fname_suffix:
-        # datasets = None
-        datasets = []
-        for raw_dir, supp_dir in zip(raw_dirs, supp_dirs):
-            os.makedirs(dst_dir, exist_ok=True)
-            data_path = os.path.join(raw_dir, 'cell_patches' + suffix + '.zarr')
-            t0 = time.time()
-            dataset = da.from_zarr(data_path)
-            datasets.append(dataset)
-            t1 = time.time()
-            print('loading dataset takes:', t1 - t0)
-            print('dataset.shape:', dataset.shape)
-        dataset = da.concatenate(datasets, axis=0)
-        print('len(dataset):', len(dataset))
-        # dataset = da.from_zarr(os.path.join(dst_dir, patch_fname))
+    print('len(dataset):', len(dataset))
+    # dataset = da.from_zarr(os.path.join(dst_dir, patch_fname))
+    t0 = time.time()
+    datasets, df_metas = \
+        split_data(dataset, df_meta_all, splits=splits, split_cols=split_cols,
+                   val_split_ratio=val_split_ratio, seed=0)
+    t1 = time.time()
+    print('splitting dataset takes:', t1 - t0)
+
+    for split in splits:
         t0 = time.time()
-        train_set, train_labels, val_set, val_labels, df_meta_all_split = \
-            split_data(dataset, labels, df_meta_all, split_cols=['data_dir', 'FOV'],
-                       val_split_ratio=val_split_ratio, seed=0)
-        t1 = time.time()
-        print('splitting dataset takes:', t1 - t0)
-        t0 = time.time()
-        da.to_zarr(train_set, os.path.join(dst_dir, 'cell_patches' + suffix + '_train.zarr'), overwrite=True, compressor='default')
-        da.to_zarr(val_set, os.path.join(dst_dir, 'cell_patches' + suffix + '_val.zarr'), overwrite=True, compressor='default')
-        da.to_zarr(train_labels, os.path.join(dst_dir, 'patch_labels' + suffix + '_train.zarr'), overwrite=True, compressor='default')
-        da.to_zarr(val_labels, os.path.join(dst_dir, 'patch_labels' + suffix + '_val.zarr'), overwrite=True, compressor='default')
-        train_labels = np.asarray(train_labels)
-        val_labels = np.asarray(val_labels)
-        with open(os.path.join(dst_dir, 'patch_labels' + suffix + '_train.npy'), 'wb') as f:
-            np.save(f, train_labels)
-        with open(os.path.join(dst_dir, 'patch_labels' + suffix + '_val.npy'), 'wb') as f:
-            np.save(f, val_labels)
+        datasets[split] = datasets[split].rechunk(datasets[split][0:1].shape)
+        da.to_zarr(datasets[split], os.path.join(dst_dir, 'cell_patches_{}.zarr'.format(split)), overwrite=True, compressor='default')
         t1 = time.time()
         print('writing dataset takes:', t1 - t0)
-        df_meta_all_split.to_csv(os.path.join(dst_dir, 'patch_meta' + suffix + '.csv'), sep=',')
+        df_metas[split].to_csv(os.path.join(dst_dir, 'patch_meta_{}.csv'.format(split)), sep=',')
     return
 
 def import_object(module_name, obj_name, obj_type='class'):

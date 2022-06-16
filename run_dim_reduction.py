@@ -178,9 +178,9 @@ def fit_umap(train_data, embed_dir, labels, label_col, fraction=0.1, seed=0,
                 print(labels_sub.shape)
                 title = 'n_neighbors={}'.format(n_nbr)
                 if axis_count == (len(ax) - 1):
-                    plot_umap(ax[axis_count], embedding_sub, labels_sub, title=title, leg_title=label_col, zoom_cutoff=0, plot_other=False)
+                    plot_umap(ax[axis_count], embedding_sub, labels_sub, title=title, leg_title=label_col, zoom_cutoff=0, plot_other=True)
                 else:
-                    plot_umap(ax[axis_count], embedding_sub, labels_sub, title=title, zoom_cutoff=0, plot_other=False)
+                    plot_umap(ax[axis_count], embedding_sub, labels_sub, title=title, zoom_cutoff=0, plot_other=True)
                 axis_count += 1
                 fig.savefig(os.path.join(embed_dir, 'UMAP_{}_frac{}_{}_{}runs.png'.format('_'.join(label_col).replace(' ', '_'), fraction, dist_metric, n_runs)),
                             dpi=300, bbox_inches='tight')
@@ -235,9 +235,11 @@ def dim_reduction(input_dirs,
         vector_list = []
         df_meta_all = []
         for input_dir in input_dirs:
+            print(input_dir)
             # only update label if current condition is different from previous
             df_meta = pd.read_csv(os.path.join(os.path.dirname(input_dir), 'patch_meta_{}.csv'.format(split)), index_col=0, converters={
                 'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
+            print(len(df_meta))
             df_meta_all.append(df_meta)
             df_meta_all = pd.concat(df_meta_all, axis=0)
             vec = np.load(os.path.join(input_dir, fname))

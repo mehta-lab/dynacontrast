@@ -1,8 +1,6 @@
 import numpy as np
 import matplotlib
 
-from utils.patch_utils import im_adjust
-
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 
@@ -13,7 +11,7 @@ def plot_umap(ax, embedding_sub, labels_sub, label_order=None, title=None, leg_t
         label_unique = np.unique(labels_sub)
     else:
         label_unique = label_order
-    print(label_unique)
+    # print(label_unique)
     label_unique = label_unique[label_unique != 'other']
     if plot_other:
         label_unique = np.concatenate([np.array(['other']), label_unique], axis=0)
@@ -21,7 +19,7 @@ def plot_umap(ax, embedding_sub, labels_sub, label_order=None, title=None, leg_t
     idx = 0
     for label in label_unique:
         if label == 'other':
-            color = [0.95, 0.95, 0.95]
+            color = [0.85, 0.85, 0.85]
         else:
             color = cmap[idx]
             idx += 1
@@ -75,3 +73,26 @@ def save_single_cell_im(output_mat,
         axis_count += 1
     fig.savefig(im_path, dpi=300, bbox_inches='tight')
     plt.close(fig)
+
+
+def im_bit_convert(im, bit=16, norm=False, limit=[]):
+    im = im.astype(np.float32, copy=False) # convert to float32 without making a copy to save memory
+    if norm:
+        if not limit:
+            limit = [np.nanmin(im[:]), np.nanmax(im[:])] # scale each image individually based on its min and max
+        im = (im-limit[0])/(limit[1]-limit[0])*(2**bit-1)
+    im = np.clip(im, 0, 2**bit-1) # clip the values to avoid wrap-around by np.astype
+    if bit==8:
+        im = im.astype(np.uint8, copy=False) # convert to 8 bit
+    else:
+        im = im.astype(np.uint16, copy=False) # convert to 16 bit
+    return im
+
+
+def im_adjust(img, tol=1, bit=8):
+    """
+    Adjust contrast of the image
+    """
+    limit = np.percentile(img, [tol, 100 - tol])
+    im_adjusted = im_bit_convert(img, bit=bit, norm=True, limit=limit.tolist())
+    return im_adjusted

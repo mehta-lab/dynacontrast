@@ -2,6 +2,8 @@ import os
 import cv2
 import natsort
 import numpy as np
+
+
 def within_range(r, pos):
     """ Check if a given position is in window
 
@@ -114,29 +116,6 @@ def select_window(img, window, padding=0., skip_boundary=False):
     else:
         output_img = output_img[..., window[1][0]:window[1][1]]
     return output_img
-
-
-def im_bit_convert(im, bit=16, norm=False, limit=[]):
-    im = im.astype(np.float32, copy=False) # convert to float32 without making a copy to save memory
-    if norm:
-        if not limit:
-            limit = [np.nanmin(im[:]), np.nanmax(im[:])] # scale each image individually based on its min and max
-        im = (im-limit[0])/(limit[1]-limit[0])*(2**bit-1)
-    im = np.clip(im, 0, 2**bit-1) # clip the values to avoid wrap-around by np.astype
-    if bit==8:
-        im = im.astype(np.uint8, copy=False) # convert to 8 bit
-    else:
-        im = im.astype(np.uint16, copy=False) # convert to 16 bit
-    return im
-
-
-def im_adjust(img, tol=1, bit=8):
-    """
-    Adjust contrast of the image
-    """
-    limit = np.percentile(img, [tol, 100 - tol])
-    im_adjusted = im_bit_convert(img, bit=bit, norm=True, limit=limit.tolist())
-    return im_adjusted
 
 
 def get_im_sites(input_dir):

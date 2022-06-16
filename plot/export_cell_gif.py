@@ -5,7 +5,8 @@ import pandas as pd
 import dask.array as da
 import imageio
 from utils.config_reader import YamlReader
-from utils.patch_utils import im_adjust
+from plot.plotting import im_adjust
+
 
 def save_single_cell_movie(config, raw_dir, supp_dir):
     z_ids = config.plotting.slice_ids

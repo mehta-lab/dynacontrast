@@ -150,12 +150,11 @@ def train_val_split(dataset, labels, val_split_ratio=0.15, seed=0):
     return train_set, train_labels, val_set, val_labels
 
 
-def split_data(dataset, label, df_meta, split_cols=None, splits = ('train', 'val'), val_split_ratio=0.15, seed=0):
+def split_data(dataset, df_meta, split_cols=None, splits = ('train', 'val'), val_split_ratio=0.15, seed=0):
     """Split the dataset into train and validation sets
 
     Args:
         dataset (TensorDataset): dataset of training inputs
-        labels (list or np array): labels corresponding to inputs
         val_split_ratio (float): fraction of the dataset used for validation
         seed (int): seed controlling random split of the dataset
 
@@ -180,10 +179,9 @@ def split_data(dataset, label, df_meta, split_cols=None, splits = ('train', 'val
     else:
         raise NotImplementedError('Unsupported split type {}'.format(splits))
     datasets = {split: dataset[ids] for split, ids in zip(splits, split_ids)}
-    labels = {split: label[ids] for split, ids in zip(splits, split_ids)}
     df_metas = {split: df_meta.iloc[ids] for split, ids in zip(splits, split_ids)}
 
     # train_set = train_set.rechunk((1, 2, 128, 128))
     # val_set = val_set.rechunk((1, 2, 128, 128))
 
-    return datasets, labels, df_metas
+    return datasets, df_metas

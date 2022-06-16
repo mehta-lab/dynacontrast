@@ -87,10 +87,10 @@ def encode_patches(raw_dir: str,
         h_s = []
         with tqdm(data_loader, desc='inference batch') as batch_pbar:
             for batch in batch_pbar:
-                print(batch.shape)
+                # print(batch.shape)
                 batch = batch.to(device)
                 code = model.encode(batch, out=encode_layer).cpu().data.numpy().squeeze()
-                print(code.shape)
+                # print(code.shape)
                 h_s.append(code)
         dats = np.concatenate(h_s, axis=0)
         output_fname = '{}_embeddings.npy'.format(data_name)
@@ -124,7 +124,7 @@ def parse_args():
     parser.add_argument(
         '-m', '--method',
         type=str,
-        required=True,
+        required=False,
         choices=['encode', 'pool_datasets'],
         default='encode',
         help="Method: one of 'encode' or 'pool_datasets'",

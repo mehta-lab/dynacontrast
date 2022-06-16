@@ -1,5 +1,3 @@
-# bchhun, {2020-02-21}
-
 from preprocess.find_cells import find_cells_mp
 from utils.patch_utils import get_im_sites
 from multiprocessing import Process

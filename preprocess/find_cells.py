@@ -11,7 +11,8 @@ from skimage import color
 from utils.config_reader import YamlReader
 import logging
 
-from utils.patch_utils import within_range, check_segmentation_dim, im_adjust
+from utils.patch_utils import within_range, check_segmentation_dim
+from plot.plotting import im_adjust
 
 log = logging.getLogger(__name__)
 

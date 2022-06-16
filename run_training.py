@@ -214,7 +214,7 @@ def main(config_):
     loss = config.training.loss
     temperature = config.training.temperature
     intensity_jitter = config.training.augmentations.intensity_jitter
-    label_col = config.training.label_col
+    label_cols = config.training.label_cols
     device = t.device('cuda:%d' % gpu_id)
     # use data loader for training ResNet
     use_loader = False
@@ -240,9 +240,16 @@ def main(config_):
             'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
         df_meta_val = pd.read_csv(os.path.join(raw_dir, 'patch_meta_val.csv'), index_col=0, converters={
             'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
-        # convert string type labels to numeric
-        train_labels = df_meta_train[label_col].factorize()[0]
-        val_labels = df_meta_val[label_col].factorize()[0]
+        train_labels = np.arange(len(df_meta_train))
+        val_labels = np.arange(len(df_meta_val))
+        if label_cols is not None:
+            if set(label_cols).issubset(df_meta_train.columns):
+                train_labels = df_meta_train[label_cols].apply(lambda row: '_'.join(row.values.astype(str)), axis=1)
+                train_labels = train_labels.factorize()[0]
+                val_labels = df_meta_val[label_cols].apply(lambda row: '_'.join(row.values.astype(str)), axis=1)
+                val_labels = val_labels.factorize()[0]
+            else:
+                raise ValueError('Not all label columns {} are found in metadata'.format(label_cols))
     else:
         raise ValueError('Parameter "normalization" must be "dataset" or "patch"')
     t1 = time.time()
