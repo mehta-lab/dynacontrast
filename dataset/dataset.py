@@ -8,7 +8,7 @@ import random
 import zarr
 from torch.utils.data import Dataset, IterableDataset
 
-def worker_init_fn():
+def worker_init_fn(worker_id):
     worker_info = torch.utils.data.get_worker_info()
     worker_id = worker_info.id
     # Pytorch seeds each worker in DataLoader with seed + worker_id.

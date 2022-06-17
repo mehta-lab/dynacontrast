@@ -61,7 +61,7 @@ This pipeline loads data from multiple fovs, adjusts intensities to correct
 
 **inputs**
 From "<fov>-supps/<fov>" directory
-- `stacks_<timepoint>.pkl` file generated from `run_patch.py -m extract_patches`
+- `stacks_<timepoint>.pkl` file generated from `run_patch.py -m get_patches_mp`
 - `cell-traj.pkl` file generated from `run_patch.py -m build_trajectories`
 
 **outputs**

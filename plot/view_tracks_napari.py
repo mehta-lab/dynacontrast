@@ -6,7 +6,7 @@ from utils.config_reader import YamlReader
 import napari
 from napari_animation import Animation
 
-def tracks_2d(df_meta_fov):
+def tracks_2d(df_meta_fov, min_length=50):
     """ convert dynacontrast metadata to napari track format """
     tracks = pd.DataFrame()
     df_meta_fov.sort_values(by=['time trajectory ID', 'time'], ascending=[True, True], inplace=True)
@@ -14,16 +14,17 @@ def tracks_2d(df_meta_fov):
     for track_id in track_ids:
         track = df_meta_fov.loc[df_meta_fov['time trajectory ID'] == track_id,
                                 ['time trajectory ID', 'time', 'slice']]
-        track[['y', 'x']] = pd.DataFrame(df_meta_fov.loc[df_meta_fov['time trajectory ID'] == track_id,
-                                'cell position'].tolist(), index=track.index)
-        # # calculate the speed as a property
-        track['vz'] = 0
-        track['vy'] = np.gradient(track['y'].to_numpy())
-        track['vx'] = np.gradient(track['x'].to_numpy())
-        #
-        track['speed'] = np.sqrt(track['vx'] ** 2 + track['vy'] ** 2 + track['vx'] ** 2)
-        track['distance'] = np.sqrt(track['y'] ** 2 + track['x'] ** 2)
-        tracks = tracks.append(track)
+        if len(track) >= min_length:
+            track[['y', 'x']] = pd.DataFrame(df_meta_fov.loc[df_meta_fov['time trajectory ID'] == track_id,
+                                    'cell position'].tolist(), index=track.index)
+            # # calculate the speed as a property
+            track['vz'] = 0
+            track['vy'] = np.gradient(track['y'].to_numpy())
+            track['vx'] = np.gradient(track['x'].to_numpy())
+            #
+            track['speed'] = np.sqrt(track['vx'] ** 2 + track['vy'] ** 2 + track['vx'] ** 2)
+            track['distance'] = np.sqrt(track['y'] ** 2 + track['x'] ** 2)
+            tracks = tracks.append(track)
     # tracks = np.concatenate(tracks, axis=0)
     tracks = tracks.to_numpy()
     data = tracks[:, :5]  # just the coordinate data
@@ -56,25 +57,26 @@ def view_tracks(config, raw_dir, supp_dir, fovs, slice_ids):
         img = np.load(os.path.join(raw_dir, fov + '.npy'))
         viewer.add_tracks(tracks, properties=properties, name='tracks', colormap='turbo', tail_length=len(img))
         limit = [-0.06, 0.09]
-        viewer.add_image(img[:, 0:1, 2:3,...], channel_axis=1, colormap='gray', gamma=2, contrast_limits=limit)
+        viewer.add_image(img[:, 0:1, ...], channel_axis=1, colormap='gray', gamma=2, contrast_limits=limit)
         seg_map = np.load(os.path.join(raw_dir, fov + '_NNProbabilities.npy'))
         limit = [0, np.max(seg_map)]
-        viewer.add_image(seg_map[:, 0:1, 2:3,...], channel_axis=1, colormap='gist_earth', contrast_limits=limit)
+        viewer.add_image(seg_map[:, 0:1, ...], channel_axis=1, colormap='gist_earth', contrast_limits=limit)
         # animation_widget = AnimationWidget(viewer)
         # viewer.window.add_dock_widget(animation_widget, area='right')
-        animation = Animation(viewer)
-        viewer.dims.set_current_step(0, 0)
-        animation.capture_keyframe()
-        viewer.dims.set_current_step(0, len(img) - 1)
-        animation.capture_keyframe(steps=len(img) - 1)
-        animation.animate(os.path.join(output_dir, 'track_{}.mov'.format(fov)),
-                          canvas_only=True,
-                          fps=4,
-                          quality=9,
-                          scale_factor=2)
+
+        # animation = Animation(viewer)
+        # viewer.dims.set_current_step(0, 0)
+        # animation.capture_keyframe()
+        # viewer.dims.set_current_step(0, len(img) - 1)
+        # animation.capture_keyframe(steps=len(img) - 1)
+        # animation.animate(os.path.join(output_dir, 'track_{}.mov'.format(fov)),
+        #                   canvas_only=True,
+        #                   fps=4,
+        #                   quality=9,
+        #                   scale_factor=2)
 
 
-        napari.run()
+        # napari.run()
 
 def main():
     arguments = parse_args()

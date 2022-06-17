@@ -31,21 +31,16 @@ def check_segmentation_dim(segmentation):
         segmentation: (np.array): segmentation mask for the frame
 
     """
-    # if segmentation.ndim == 4:
-    #     n_channels, n_z, x_full_size, y_full_size = segmentation.shape
+    if segmentation.ndim == 5:
+        return segmentation
+    if segmentation.ndim == 4: # missing channel dim
+        segmentation = segmentation[:, np.newaxis, ...]
     if segmentation.ndim == 3:
-        n_channels, x_full_size, y_full_size = segmentation.shape
-        # segmentation = segmentation[:, np.newaxis, ...]
+        segmentation = segmentation[np.newaxis, np.newaxis, ...]
     elif segmentation.ndim == 2:
-        n_channels = 1
-        segmentation = segmentation[np.newaxis, ...]
+        segmentation = segmentation[np.newaxis, np.newaxis, np.newaxis, ...]
     else:
-        raise ValueError('Semantic segmentation mask must be 2 or 3D, not {}'.format(segmentation.ndim))
-
-    # binary segmentation has only foreground channel, add background channel
-    if n_channels == 1:
-        segmentation = np.concatenate([1 - segmentation, segmentation], axis=0)
-    assert np.allclose(segmentation.sum(0), 1.), "Semantic segmentation doens't sum up to 1"
+        raise ValueError('segmentation mask must be 2-5D, not {}'.format(segmentation.ndim))
     return segmentation
 
 
@@ -123,29 +118,6 @@ def select_window(img, window, padding=0., skip_boundary=False):
     return output_img
 
 
-def im_bit_convert(im, bit=16, norm=False, limit=[]):
-    im = im.astype(np.float32, copy=False) # convert to float32 without making a copy to save memory
-    if norm:
-        if not limit:
-            limit = [np.nanmin(im[:]), np.nanmax(im[:])] # scale each image individually based on its min and max
-        im = (im-limit[0])/(limit[1]-limit[0])*(2**bit-1)
-    im = np.clip(im, 0, 2**bit-1) # clip the values to avoid wrap-around by np.astype
-    if bit==8:
-        im = im.astype(np.uint8, copy=False) # convert to 8 bit
-    else:
-        im = im.astype(np.uint16, copy=False) # convert to 16 bit
-    return im
-
-
-def im_adjust(img, tol=1, bit=8):
-    """
-    Adjust contrast of the image
-    """
-    limit = np.percentile(img, [tol, 100 - tol])
-    im_adjusted = im_bit_convert(img, bit=bit, norm=True, limit=limit.tolist())
-    return im_adjusted
-
-
 def get_im_sites(input_dir):
     """
     Get sites (FOV names) from numpy files in the input directory
@@ -156,7 +128,7 @@ def get_im_sites(input_dir):
         sites (list): sites (FOV names)
 
     """
-    img_names = [file for file in os.listdir(input_dir) if (file.endswith(".npy")) & ('_NN' not in file)]
+    img_names = [file for file in os.listdir(input_dir) if file.endswith(".npy") & file.startswith('img_') & ('_NN' not in file)]
     sites = [os.path.splitext(img_name)[0] for img_name in img_names]
     sites = natsort.natsorted(list(set(sites)))
     return sites
@@ -180,3 +152,4 @@ def get_cell_rect_angle(tm):
     if w < h:
         ang = ang - 90
     return ang
+

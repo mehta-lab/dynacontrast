@@ -5,7 +5,7 @@
 #     b. retardance: 1400~1600 plus/minus 1500~1800
 # 3. save as '$SITE_NAME.npy' numpy array, dtype=uint16
 
-from utils.preprocess import write_raw_to_npy
+from file_io.tiff2npy import write_raw_to_npy
 import os
 import fnmatch
 

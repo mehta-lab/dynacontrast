@@ -2,6 +2,7 @@ import os
 import numpy as np
 import argparse
 import dask
+import pandas as pd
 import torch as t
 import torch.nn as nn
 import time
@@ -15,8 +16,8 @@ from torch.utils.tensorboard import SummaryWriter
 from utils.train_utils import EarlyStopping, DataLoader
 from dataset.dataset import TripletIterDataset, worker_init_fn
 from dataset.augmentation import augment_img
-from HiddenStateExtractor.losses import AllTripletMiner, NTXent
-from HiddenStateExtractor.resnet import EncodeProject
+from train.losses import AllTripletMiner, NTXent
+from train.resnet import EncodeProject
 
 from utils.config_reader import YamlReader
 
@@ -144,7 +145,7 @@ def train_with_loader(model, train_loader, val_loader, output_dir,
                 batch = t.cat([datum for datum in data], axis=0).to(device)
                 model, train_loss = \
                     run_one_batch(model, batch, train_loss, model_kwargs={'labels': labels}, optimizer=optimizer,
-                                  transform=False, training=True)
+                                   training=True)
         # loop through validation batches
         model.eval()
         with t.no_grad():
@@ -155,7 +156,7 @@ def train_with_loader(model, train_loader, val_loader, output_dir,
                     data = t.cat([datum for datum in data], axis=0).to(device)
                     model, val_loss = \
                         run_one_batch(model, data, val_loss, model_kwargs={'labels': labels}, optimizer=optimizer,
-                                     transform=False, training=False)
+                                      training=False)
         for key, loss in train_loss.items():
             train_loss[key] = sum(loss) / len(loss)
             writer.add_scalar('Loss/' + key, train_loss[key], epoch)
@@ -205,16 +206,15 @@ def main(config_):
     n_epochs = config.training.n_epochs
     gpu_id = config.training.gpu_id
     retrain = config.training.retrain
-    earlystop_metric = 'positive_triplet'
+    earlystop_metric = config.training.earlystop_metric
     model_name = config.training.model_name
     start_model_path = config.training.start_model_path
     start_epoch = config.training.start_epoch
-    use_mask = config.training.use_mask
-    channels = config.training.channels
     normalization = config.training.normalization
     loss = config.training.loss
     temperature = config.training.temperature
     intensity_jitter = config.training.augmentations.intensity_jitter
+    label_cols = config.training.label_cols
     device = t.device('cuda:%d' % gpu_id)
     # use data loader for training ResNet
     use_loader = False
@@ -234,10 +234,22 @@ def main(config_):
         train_set_sync = zarr.ProcessSynchronizer(os.path.join(raw_dir, 'cell_patches_train.sync'))
         train_set = zarr.open(os.path.join(raw_dir, 'cell_patches_train.zarr'), synchronizer=train_set_sync)
         val_set = zarr.open(os.path.join(raw_dir, 'cell_patches_val.zarr'))
-        train_labels = np.load(os.path.join(raw_dir, 'patch_labels_train.npy'))
-        val_labels = np.load(os.path.join(raw_dir, 'patch_labels_val.npy'))
-        # df_meta_all = pd.read_csv(os.path.join(raw_dir, 'patch_meta.csv'), index_col=0, converters={
-        #     'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
+        # train_labels = np.load(os.path.join(raw_dir, 'patch_labels_train.npy'))
+        # val_labels = np.load(os.path.join(raw_dir, 'patch_labels_val.npy'))
+        df_meta_train = pd.read_csv(os.path.join(raw_dir, 'patch_meta_train.csv'), index_col=0, converters={
+            'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
+        df_meta_val = pd.read_csv(os.path.join(raw_dir, 'patch_meta_val.csv'), index_col=0, converters={
+            'cell position': lambda x: np.fromstring(x.strip("[]"), sep=' ', dtype=np.int32)})
+        train_labels = np.arange(len(df_meta_train))
+        val_labels = np.arange(len(df_meta_val))
+        if label_cols is not None:
+            if set(label_cols).issubset(df_meta_train.columns):
+                train_labels = df_meta_train[label_cols].apply(lambda row: '_'.join(row.values.astype(str)), axis=1)
+                train_labels = train_labels.factorize()[0]
+                val_labels = df_meta_val[label_cols].apply(lambda row: '_'.join(row.values.astype(str)), axis=1)
+                val_labels = val_labels.factorize()[0]
+            else:
+                raise ValueError('Not all label columns {} are found in metadata'.format(label_cols))
     else:
         raise ValueError('Parameter "normalization" must be "dataset" or "patch"')
     t1 = time.time()
