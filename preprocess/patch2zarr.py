@@ -47,14 +47,14 @@ def pool_positions(raw_folder: str,
     split_ratio = None
     split_cols = None
     patch_shape = (128, 128)
-    if hasattr(config.patch, 'splits'):
-        splits = config.patch.splits
-    if hasattr(config.patch, 'split_ratio'):
-        split_ratio = config.patch.split_ratio
-    if hasattr(config.patch, 'split_cols'):
-        split_cols = config.patch.split_cols
-    if hasattr(config.patch, 'size'):
-        patch_shape = (config.patch.size, config.patch.size)
+    if hasattr(config.preprocess, 'splits'):
+        splits = config.preprocess.splits
+    if hasattr(config.preprocess, 'split_ratio'):
+        split_ratio = config.preprocess.split_ratio
+    if hasattr(config.preprocess, 'split_cols'):
+        split_cols = config.preprocess.split_cols
+    if hasattr(config.preprocess, 'size'):
+        patch_shape = (config.preprocess.patch_size, config.preprocess.patch_size)
     if type(splits) is str:
         splits = [splits]
     if type(splits) is list:

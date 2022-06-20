@@ -30,7 +30,7 @@ patch:
   channels: [0,1]
   fov: null
   num_cpus: 50
-  window_size: 128
+  crop_size: 128
   save_fig: False
   reload: False
   skip_boundary: True
@@ -84,7 +84,7 @@ segmentation:
   channel_mean:
   channel_std:
   num_classes: 3
-  window_size: 256
+  crop_size: 256
   batch_size: 8
   num_pred_rnd: 5
   seg_val_cat: 'mg'

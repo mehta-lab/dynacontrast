@@ -1,26 +1,6 @@
 import yaml
 import logging
 
-
-# replicate from aicsimageio logging mechanism
-###############################################################################
-
-# modify the logging.ERROR level lower for more info
-# CRITICAL
-# ERROR
-# WARNING
-# INFO
-# DEBUG
-# NOTSET
-#TODO: Save log file to train or supp folders
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(levelname)4s: %(module)s:%(lineno)4s %(asctime)s] %(message)s",
-)
-log = logging.getLogger(__name__)
-
-###############################################################################
-
 # to add a new configuration parameter, simply add the string to the appropriate set here
 
 PREPROCESS = {
@@ -39,7 +19,7 @@ PATCH = {
     'channels',
     'fov',
     'num_cpus',
-    'window_size',
+    'crop_size',
     'save_fig',
     'reload',
     'skip_boundary',
@@ -61,7 +41,7 @@ INFERENCE = {
     'channel_mean',
     'channel_std',
     'num_classes',
-    'window_size',
+    'crop_size',
     'batch_size',
     'num_pred_rnd',
     'seg_val_cat',
@@ -84,7 +64,7 @@ SEGMENTATION = {
     'channel_mean',
     'channel_std',
     'num_classes',
-    'window_size',
+    'crop_size',
     'batch_size',
     'num_pred_rnd',
     'seg_val_cat'
@@ -141,7 +121,7 @@ TRAINING = {
     'augmentations'
 }
 
-
+##TODO: add checks for config fields
 class Object:
     pass
 
@@ -183,52 +163,52 @@ class YamlReader(Struct):
             # self._parse_dim_reduction()
             # self._parse_training()
 
-    def _parse_preprocessing(self):
-        for key, value in self.config['preprocess'].items():
-            if key in PREPROCESS:
-                setattr(self.preprocess, key, value)
-            else:
-                log.warning(f"yaml PREPROCESS config field {key} is not recognized")
-
-    def _parse_patch(self):
-        for key, value in self.config['patch'].items():
-            if key in PATCH:
-                setattr(self.patch, key, value)
-            else:
-                log.warning(f"yaml PATCH config field {key} is not recognized")
-
-    def _parse_inference(self):
-        for key, value in self.config['inference'].items():
-            if key in INFERENCE:
-                setattr(self.inference, key, value)
-            else:
-                log.warning(f"yaml INFERENCE config field {key} is not recognized")
-
-    def _parse_segmentation(self):
-        for key, value in self.config['segmentation'].items():
-            if key in SEGMENTATION:
-                setattr(self.segmentation, key, value)
-            else:
-                log.warning(f"yaml SEGMENTATION config field {key} is not recognized")
-
-    def _parse_dim_reduction(self):
-        for key, value in self.config['dim_reduction'].items():
-            if key in DIM_REDUCTION:
-                setattr(self.dim_reduction, key, value)
-            else:
-                log.warning(f"yaml DIM REDUCTION config field {key} is not recognized")
-
-    def _parse_training(self):
-        for key, value in self.config['training'].items():
-            if key in TRAINING:
-                setattr(self.training, key, value)
-                if isinstance(value, dict):
-                    for key_sub, value_sub in value.items():
-                        setattr(self.training, key, value)
-
-
-            else:
-                log.warning(f"yaml TRAINING config field {key} is not recognized")
+    # def _parse_preprocessing(self):
+    #     for key, value in self.config['preprocess'].items():
+    #         if key in PREPROCESS:
+    #             setattr(self.preprocess, key, value)
+    #         else:
+    #             log.warning(f"yaml PREPROCESS config field {key} is not recognized")
+    #
+    # def _parse_patch(self):
+    #     for key, value in self.config['patch'].items():
+    #         if key in PATCH:
+    #             setattr(self.patch, key, value)
+    #         else:
+    #             log.warning(f"yaml PATCH config field {key} is not recognized")
+    #
+    # def _parse_inference(self):
+    #     for key, value in self.config['inference'].items():
+    #         if key in INFERENCE:
+    #             setattr(self.inference, key, value)
+    #         else:
+    #             log.warning(f"yaml INFERENCE config field {key} is not recognized")
+    #
+    # def _parse_segmentation(self):
+    #     for key, value in self.config['segmentation'].items():
+    #         if key in SEGMENTATION:
+    #             setattr(self.segmentation, key, value)
+    #         else:
+    #             log.warning(f"yaml SEGMENTATION config field {key} is not recognized")
+    #
+    # def _parse_dim_reduction(self):
+    #     for key, value in self.config['dim_reduction'].items():
+    #         if key in DIM_REDUCTION:
+    #             setattr(self.dim_reduction, key, value)
+    #         else:
+    #             log.warning(f"yaml DIM REDUCTION config field {key} is not recognized")
+    #
+    # def _parse_training(self):
+    #     for key, value in self.config['training'].items():
+    #         if key in TRAINING:
+    #             setattr(self.training, key, value)
+    #             if isinstance(value, dict):
+    #                 for key_sub, value_sub in value.items():
+    #                     setattr(self.training, key, value)
+    #
+    #
+    #         else:
+    #             log.warning(f"yaml TRAINING config field {key} is not recognized")
 
 
 

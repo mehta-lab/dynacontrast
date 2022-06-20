@@ -650,6 +650,6 @@ def build_trajectories(summary_folder: str,
         else:
             print("Building trajectories %s" % site_path, flush=True)
             process_site_build_trajectory(site_supp_files_folder,
-                                          min_len=config.patch.min_length,
-                                          track_dim=config.patch.track_dim)
+                                          min_len=config.preprocess.min_length,
+                                          track_dim=config.preprocess.track_dim)
     return

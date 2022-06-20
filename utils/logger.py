@@ -17,4 +17,6 @@ def make_logger(log_dir, logger_name='dynacontrast.log', log_level=20):
                         datefmt='%H:%M:%S',
                         level=log_level)
     logger = logging.getLogger()
+    consoleHandler = logging.StreamHandler()
+    logger.addHandler(consoleHandler)
     return logger
