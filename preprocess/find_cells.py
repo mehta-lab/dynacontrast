@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 def find_cells_mp(raw_folder: str,
                   supp_folder: str,
                   sites: list,
+                  config: YamlReader,
                   rerun=True,
                   **kwargs):
     """ Helper function for instance segmentation

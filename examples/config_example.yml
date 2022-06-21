@@ -1,138 +1,131 @@
-patch:
+preprocess:
   raw_dirs: [
-             '/CompMicro/projects/cardiomyocytes/200721_CM_Mock_SPS_Fluor/20200721_CM_Mock_SPS/dnm_input_tstack',
-              '/CompMicro/projects/cardiomyocytes/20200722CM_LowMOI_SPS_Fluor/20200722 CM_LowMOI_SPS/dnm_input_tstack',
-              '/CompMicro/projects/virtualstaining/kidneyslice/2019_02_15_kidney_slice/dnm_input',
-#              '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/Mock_24h_right/dnm_input',
-#              '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/Mock_48h_right/dnm_input',
-#              '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/RSV_24h_right/dnm_input',
-#              '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/RSV_48h_right/dnm_input',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/MOCK_IFNA_48/dnm_input',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNA_24/dnm_input',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNA_48/dnm_input',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNL_24/dnm_input'
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0001-1',  
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0002-1',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0003-1',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0004-1',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0006-1',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0007-1',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0008-1',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0009-1',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0015-1',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0016-1',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0017-1',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0018-1',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0020-1',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0021-1',          
             ]
 
   supp_dirs: [
-             '/CompMicro/projects/cardiomyocytes/200721_CM_Mock_SPS_Fluor/20200721_CM_Mock_SPS/dnm_supp_tstack',
-             '/CompMicro/projects/cardiomyocytes/20200722CM_LowMOI_SPS_Fluor/20200722 CM_LowMOI_SPS/dnm_supp_tstack',
-             '/CompMicro/projects/virtualstaining/kidneyslice/2019_02_15_kidney_slice/dnm_supp',
-#             '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/Mock_24h_right/dnm_supp',
-#             '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/Mock_48h_right/dnm_supp',
-#             '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/RSV_24h_right/dnm_supp',
-#             '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/RSV_48h_right/dnm_supp',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/MOCK_IFNA_48/dnm_supp',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNA_24/dnm_supp',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNA_48/dnm_supp',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNL_24/dnm_supp'
+           '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0001-1_patch',
+           '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0002-1_patch',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0003-1_patch',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0004-1_patch',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0006-1_patch',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0007-1_patch',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0008-1_patch',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0009-1_patch',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0015-1_patch',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0016-1_patch',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0017-1_patch',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0018-1_patch',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0020-1_patch',
+#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0021-1_patch',          
              ]
-
   channels: [0,1]
   fov: null
-  num_cpus: 50
-  window_size: 128
-  save_fig: False
-  reload: False
-  skip_boundary: True
-  min_length: 2
-  track_dim: 'slice'
-
-
-segmentation:
-  raw_dirs: [  
-#              '/CompMicro/projects/cardiomyocytes/200721_CM_Mock_SPS_Fluor/20200721_CM_Mock_SPS/dnm_input_tstack',
-#              '/CompMicro/projects/cardiomyocytes/20200722CM_LowMOI_SPS_Fluor/20200722 CM_LowMOI_SPS/dnm_input_tstack',
-#              '/CompMicro/projects/virtualstaining/kidneyslice/2019_02_15_kidney_slice/dnm_input',
-#              '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/Mock_24h_right/dnm_input',
-#              '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/Mock_48h_right/dnm_input',
-#              '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/RSV_24h_right/dnm_input',
-#              '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/RSV_48h_right/dnm_input',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/MOCK_IFNA_48/dnm_input',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNA_24/dnm_input',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNA_48/dnm_input',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNL_24/dnm_input'
-            ]
-
-  supp_dirs: [
-#             '/CompMicro/projects/cardiomyocytes/200721_CM_Mock_SPS_Fluor/20200721_CM_Mock_SPS/dnm_supp_tstack',
-#             '/CompMicro/projects/cardiomyocytes/20200722CM_LowMOI_SPS_Fluor/20200722 CM_LowMOI_SPS/dnm_supp_tstack',
-#             '/CompMicro/projects/virtualstaining/kidneyslice/2019_02_15_kidney_slice/dnm_supp',
-#             '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/Mock_24h_right/dnm_supp',
-#             '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/Mock_48h_right/dnm_supp',
-#             '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/RSV_24h_right/dnm_supp',
-#             '/CompMicro/projects/A549/20210209_Falcon_3D_uPTI_A549_RSV_registered/RSV_48h_right/dnm_supp',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/MOCK_IFNA_48/dnm_supp',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNA_24/dnm_supp',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNA_48/dnm_supp',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNL_24/dnm_supp'
-             ]
-  val_dirs: [null, null, null, null]
-
-  weights: '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNL_24/dnm_train/CM+kidney+A549_QLIPP_ResNet50_notrj_patchnorm_rot/model.pt'
-  # pytorch weight files
-
-  model: 'ResNet50'
-
-  save_output: True
-  # write .jpg results from run_vae.process
-
-  gpu_ids: [0]
-  # list of GPUs to run inference on.
   num_workers: 20
-  fov: False
-  channels: [0,1]
-  channel_mean:
-  channel_std:
-  num_classes: 3
-  window_size: 256
-  batch_size: 8
-  num_pred_rnd: 5
-  seg_val_cat: 'mg'
+  crop_size: 200
+  patch_size: 100
+  save_fig: False
+  skip_boundary: True
+  
+#  min_length: 2
+#  track_dim: 'slice'
+  
 
 data_pooling:
-  raw_dirs: [  
-              '/CompMicro/projects/cardiomyocytes/200721_CM_Mock_SPS_Fluor/20200721_CM_Mock_SPS/dnm_input_tstack',
-              '/CompMicro/projects/cardiomyocytes/20200722CM_LowMOI_SPS_Fluor/20200722 CM_LowMOI_SPS/dnm_input_tstack',
-              '/CompMicro/projects/virtualstaining/kidneyslice/2019_02_15_kidney_slice/dnm_input',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/MOCK_IFNA_48/dnm_input',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNA_24/dnm_input',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNA_48/dnm_input',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNL_24/dnm_input'
+  raw_dirs: [
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0001-1',  
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0002-1',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0003-1',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0004-1',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0006-1',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0007-1',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0008-1',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0009-1',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0015-1',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0016-1',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0017-1',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0018-1',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0020-1',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0021-1',          
             ]
+
   supp_dirs: [
-             '/CompMicro/projects/cardiomyocytes/200721_CM_Mock_SPS_Fluor/20200721_CM_Mock_SPS/dnm_supp_tstack',
-             '/CompMicro/projects/cardiomyocytes/20200722CM_LowMOI_SPS_Fluor/20200722 CM_LowMOI_SPS/dnm_supp_tstack',
-             '/CompMicro/projects/virtualstaining/kidneyslice/2019_02_15_kidney_slice/dnm_supp',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/MOCK_IFNA_48/dnm_supp',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNA_24/dnm_supp',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNA_48/dnm_supp',
-             '/CompMicro/projects/A549/2021_02_25_40X_04NA_A549_tif_registered/RSV_IFNL_24/dnm_supp'
-             ]          
-  dst_dir:  '/CompMicro/projects/dynacontrast/4_cell_types'
-  val_split_ratio: 0.15  
+           '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0001-1_patch',
+           '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0002-1_patch',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0003-1_patch',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0004-1_patch',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0006-1_patch',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0007-1_patch',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0008-1_patch',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0009-1_patch',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0015-1_patch',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0016-1_patch',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0017-1_patch',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0018-1_patch',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0020-1_patch',
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0021-1_patch',          
+             ]
+  dst_dir:  '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool'
+  splits: ['train', 'val']
+  split_cols: ['gene']
+  split_ratio: 0.15
+
 
 inference:
-  raw_dirs: ['/gpfs/CompMicro/projects/dynacontrast/4_cell_types']
+  raw_dirs: [  
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool' 
+            ]
 
-  supp_dirs: ['/gpfs/CompMicro/projects/dynacontrast/4_cell_types']
+  supp_dirs: [
+          '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool'
+             ]
 
-  weights: ['/gpfs/CompMicro/projects/dynacontrast/4_cell_types/models/triplet_test'] # pytorch weight files
+  weights: [
+#            '/gpfs/CompMicro/projects/dynacontrast/opencell/2021-7-15_good-fovs/models/rot_crop_jit_ntxent_0.5',
+#            '/gpfs/CompMicro/projects/dynacontrast/opencell/2021-7-15_good-fovs/models/rot_crop_jit_ntxent_0.1',
+#            '/gpfs/CompMicro/projects/dynacontrast/opencell/2021-7-15_good-fovs/models/rot_crop_jit_ntxent_2',
+#            '/gpfs/CompMicro/projects/dynacontrast/opencell/2021-7-15_good-fovs/models/rot_crop_jit_triplet',
+#            '/gpfs/CompMicro/projects/dynacontrast/opencell/2021-7-15_good-fovs/models/rot_crop_jit_ntxent_2_label_protein',
+            '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool/models/tic_ntxent_2_label_gene+expid+condi',
+            '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool/models/tic_ntxent_2'
+            ]  # pytorch weight files
 
   network: 'ResNet50'
   network_width: 1
-  projection: True
-
-  gpu_ids: [0]
-  # list of GPUs to run inference on.
+  projection: False
+  gpu_ids: 2  # list of GPUs to run inference on.
   fov: False
   channels: [0,1]
   normalization: patch
-  batch_size: 384
-  num_workers: 16
+  splits: ['all']
+  batch_size: 1024
+  num_workers: 24
+
+dim_reduction:
+  input_dirs:
+  output_dirs:
+  file_name_prefixes:
+  weights_dirs:
+  fit_model:
+  conditions:
+
 
 training:
-  raw_dir: '/gpfs/CompMicro/projects/dynacontrast/4_cell_types'
-  weights_dir: '~/dynacontrast_train_test'
+  raw_dir: '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool' 
+  weights_dir: '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool/models'
   # model hyperparameters
   network: 'ResNet50'
   network_width: 1
@@ -148,8 +141,7 @@ training:
 
   n_epochs: 5000
   learn_rate: 0.0001
-  batch_size: 768
-  val_split_ratio: 0.15
+  batch_size: 1280
   shuffle_data: False
   transform: True
   patience: 100
@@ -160,15 +152,18 @@ training:
 #  start_model_path: '/CompMicro/projects/virtualstaining/kidneyslice/2019_02_15_kidney_slice/dnm_train/CM+kidney_ResNet101_mrg1_npos4_bh512_alltriloss/model.pt'
   retrain: True
   start_epoch: 0
-  earlystop_metric: 'total_loss'
-  model_name: 'test_model'
+#  earlystop_metric: positive_triplet
+  earlystop_metric: total_loss # 'total_loss' or 'positive_triplet' for triplet loss 
+  model_name: 'tic_ntxent_2_label_gene+expid+condi'
   normalization: patch
-  loss: ntxent
-  temperature: 0.5
+#  loss: triplet # triplet or ntxent
+  loss: ntxent # triplet or ntxent 
+  temperature: 2
+  label_cols: ['gene', 'experiment ID', 'condition']
   augmentations:
     rotate_range: 180
     intensity_jitter: [0.5, 0.5]
-  gpu_id: 0
+  gpu_id: 2
 
 
   
