@@ -49,28 +49,32 @@ docker run -it -m 128G --name [name of your container] -v [folder on the host]:[
 ```
 
 ## Usage
-You can find the template and the example config file in `examples` directory in the repository.
+You can find the example config file in `examples` directory.
 
-Extract single cell patches from single cell instance segmentation maps, then connect them into trajectories:
+# Proprocessing
+To preprocess the images to extract single cell patches from nucleus instance segmentation maps:
 
-	python run_patch.py -m "get_patches_mp" -c <path-to-your-config-yaml>
-	python run_patch.py -m "build_trajectories" -c <path-to-your-config-yaml>
+	python run_preprocess.py --config <path-to-your-config-yaml>
 
-Assemble extracted patches into a single zarr array:
+This will output single cell patches as a single zarr file “cell_patches_all.zarr” if no split is specified in the config. If split is specified, the patches will be split into training and validation sets “cell_patches_train.zarr” and “cell_patches_val.zarr” for model training.
 
-	python run_encoding.py -m "assemble" -c <path-to-your-config-yaml>
-
+# Training
 Train a model to learn single cell representation of the patches:
 
-	python run_training.py -c <path-to-your-config-yaml>
+	python run_training.py --config <path-to-your-config-yaml>
 
-Encode image patches into the vectors using the model:
+This will save the model weights as pytorch checkpoint file “model.pt” in “weights_dir” under “model_name” specified in training config.
 
-	python run_encoding.py -m "process" -c <path-to-your-config-yaml>
+# Encoding
+Encode image patches into the vectors using the trained model:
+
+	python run_encoding.py --config <path-to-your-config-yaml>
+
+This will output the patch embeddings as `<split>_embeddings.npy`, depending on which split is specified in the config.  
 
 For example, to run encoding using the example config:
 
-    python run_encoding.py -m process --config examples/config_example.yml 
+    python run_encoding.py --config examples/config_example.yml 
 
     
 
