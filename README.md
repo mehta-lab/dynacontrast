@@ -56,14 +56,27 @@ To preprocess the images to extract single cell patches from nucleus instance se
 
 	python run_preprocess.py --config <path-to-your-config-yaml>
 
-This will output single cell patches as a single zarr file “cell_patches_all.zarr” if no split is specified in the config. If split is specified, the patches will be split into training and validation sets “cell_patches_train.zarr” and “cell_patches_val.zarr” for model training.
+This will output single cell patches as a single zarr file “cell_patches_all.zarr” if no split is specified in the config. If split is specified, the patches will be split into training and validation sets “cell_patches_train.zarr” and “cell_patches_val.zarr” for model training. 
+See `preprocess` section in "examples/config_example.yml" for complete parameters for preprocessing.
+
+Preprocess CLI also outputs single cell patch metadata in .csv format (“patch_meta_all.csv”). The metadata contains patch information such as cell ID, cell position, cell size, position, slice, time. Additional metadata of the experiment (e.g. condition for each well in a multi-well plate) can be provided in the input folder as “metadata.csv” on imaging position level with each position having a unique position ID. This additional metadata will be merged with dynacontrast’s patch metadata. 
+
+(Optional) The preprocessing module processes each 2D image separately, so for z-stack or time-lapse where a cell can span multiple z-slices or frames, multiple patches can be generated from a single cell. 
+To link these patches to the same cell, you can add `track_dim` parameter with value 'time' or 'slice' in the config to link patches in time or z dimension.
+
+# Data pooling (optional)
+Often times training data needs to combine multiple datasets to improve the model performance. Data pooling CLI provides a simple interface to combine “cell_patches_all.zarr” files and "patch_meta_all.csv" from different experiments into one by supplying in the config the directories of datasets to pool and the destination directory.  
+
+    python run_data_pooling.py --config <path-to-your-config-yaml>
+
+Split parameters can be added to the config in the same way as preprocess config to split the pooled dataset into training and validation sets.   
 
 # Training
 Train a model to learn single cell representation of the patches:
 
 	python run_training.py --config <path-to-your-config-yaml>
 
-This will save the model weights as pytorch checkpoint file “model.pt” in “weights_dir” under “model_name” specified in training config.
+This will save the model weights as pytorch checkpoint file “model.pt” in “weights_dir” under “model_name” specified in training config. The module also writes tensorboard log file in the same directory that can be visualized using tensorboard.
 
 # Encoding
 Encode image patches into the vectors using the trained model:
@@ -74,7 +87,9 @@ This will output the patch embeddings as `<split>_embeddings.npy`, depending on 
 
 For example, to run encoding using the example config:
 
-    python run_encoding.py --config examples/config_example.yml 
+    python run_encoding.py --config examples/config_example.yml
+
+# Dimensionality reduction
 
     
 
