@@ -11,7 +11,6 @@ from numcodecs import blosc
 from tqdm import tqdm
 from torch.utils.data import TensorDataset
 from torch.utils.tensorboard import SummaryWriter
-# from torchvision import transforms
 
 from utils.train_utils import EarlyStopping, DataLoader
 from dataset.dataset import TripletIterDataset, worker_init_fn
@@ -214,12 +213,11 @@ def main(config_):
     loss = config.training.loss
     temperature = config.training.temperature
     intensity_jitter = config.training.augmentations.intensity_jitter
+    rotate_range = config.training.augmentations.rotate_range
+    zoom_range = config.training.augmentations.zoom_range
+    crop_ratio = config.training.augmentations.crop_ratio
     label_cols = config.training.label_cols
     device = t.device('cuda:%d' % gpu_id)
-    # use data loader for training ResNet
-    use_loader = False
-    if 'ResNet' in network:
-        use_loader = True
     os.makedirs(train_dir, exist_ok=True)
     print('loading data {}'.format(raw_dir))
     t0 = time.time()
@@ -264,15 +262,23 @@ def main(config_):
     # SimCLR uses n_pos_samples=2
     tri_train_set = TripletIterDataset(labels=train_labels,
                                         data=train_set,
-                                        data_fn=lambda img: augment_img(img, intensity_jitter=intensity_jitter),
+                                        data_fn=lambda img: augment_img(img,
+                                                                        intensity_jitter=intensity_jitter,
+                                                                        rotate_range=rotate_range,
+                                                                        zoom_range=zoom_range,
+                                                                        crop_ratio = crop_ratio),
                                         n_sample=n_pos_samples,
                                         shuffle=True,
                                         )
     tri_val_set = TripletIterDataset(labels=val_labels,
-                                   data=val_set,
-                                   data_fn=lambda img: augment_img(img, intensity_jitter=intensity_jitter),
+                                    data=val_set,
+                                   data_fn=lambda img: augment_img(img,
+                                                                    intensity_jitter=intensity_jitter,
+                                                                    rotate_range=rotate_range,
+                                                                    zoom_range=zoom_range,
+                                                                    crop_ratio = crop_ratio),
                                    n_sample=n_pos_samples,
-                                     shuffle=True,
+                                    shuffle=True,
 
                                      )
     # Data Loader

@@ -39,22 +39,19 @@ def multiproc(raw, supp, config, segment_sites, method, n_workers):
         p.join()
 
 def main(raw_dir, supp_dir, config):
-    fov = config.preprocess.fov
+    positions = config.preprocess.positions
     n_workers = config.preprocess.num_workers
     os.makedirs(supp_dir, exist_ok=True)
     logger = make_logger(
-        log_dir=supp_dir,
+        log_dir=raw_dir,
         log_level=20,
     )
 
-    assert len(config.preprocess.channels) > 0, "At least one channel must be specified"
-
-    if fov:
-        sites = fov
+    if positions:
+        sites = ['img_p{:03d}'.format(p) for p in positions]
     else:
         # get all "XX-SITE_#" identifiers in raw data directory
         sites = get_im_sites(raw_dir)
-
     # if probabilities and formatted stack exist
     segment_sites = [site for site in sites if os.path.exists(os.path.join(raw_dir, "%s.npy" % site)) and \
                      os.path.exists(os.path.join(raw_dir, "%s_NNProbabilities.npy" % site))]

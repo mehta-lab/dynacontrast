@@ -33,9 +33,6 @@ def get_patches_mp(raw_folder: str,
         config (YamlReader): config file supplied at CLI
     """
     channels = config.preprocess.channels
-
-    assert len(channels) > 0, "At least one channel must be specified"
-
     crop_size = config.preprocess.crop_size
     save_fig = config.preprocess.save_fig
     skip_boundary = config.preprocess.skip_boundary

@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import logging
 import torch
 import zarr
 from torch.utils.data import DataLoader
@@ -11,13 +12,12 @@ from preprocess.patch2zarr import pool_datasets
 from utils.patch_utils import get_im_sites
 import argparse
 from utils.config_reader import YamlReader
+from utils.logger import make_logger
 
 def encode_patches(raw_dir: str,
-                   supp_folder: str,
-                   sites: list,
                    config_: YamlReader,
                    gpu: int=0,
-                   **kwargs):
+                   ):
     """ Wrapper method for patch encoding
 
     This function loads prepared dataset and applies trained VAE to encode
@@ -35,8 +35,9 @@ def encode_patches(raw_dir: str,
         config_ (YamlReader): Reads fields from the "INFERENCE" category
 
     """
+    log = logging.getLogger('dynacontrast.log')
     model_dir = config_.inference.weights
-    channels = config_.inference.channels
+    n_chan = config_.inference.n_channels
     network = config_.inference.network
     network_width = config_.inference.network_width
     batch_size = config_.inference.batch_size
@@ -44,8 +45,6 @@ def encode_patches(raw_dir: str,
     normalization = config_.inference.normalization
     projection = config_.inference.projection
     splits = config_.inference.splits
-
-    assert len(channels) > 0, "At least one channel must be specified"
 
     model_name = os.path.basename(model_dir)
     if projection:
@@ -58,12 +57,16 @@ def encode_patches(raw_dir: str,
     datasets = {}
     for split in splits:
         if normalization == 'dataset':
-            datasets[split] = zarr.open(os.path.join(raw_dir, 'cell_patches_datasetnorm_{}.zarr'.format(split)))
+            zarr_path = os.path.join(raw_dir, 'cell_patches_datasetnorm_{}.zarr'.format(split))
         elif normalization == 'patch':
-            # train_set_sync = zarr.ProcessSynchronizer(os.path.join(raw_dir, 'cell_patches_train.sync'))
-            datasets[split] = zarr.open(os.path.join(raw_dir, 'cell_patches_{}.zarr'.format(split)))
+            zarr_path = os.path.join(raw_dir, 'cell_patches_{}.zarr'.format(split))
         else:
             raise ValueError('Parameter "normalization" must be "dataset" or "patch"')
+        if not os.path.isdir(zarr_path):
+            msg = '{} is not found.'.format(zarr_path)
+            log.error(msg)
+            raise FileNotFoundError(msg)
+        datasets[split] = zarr.open(zarr_path)
         datasets[split] = ImageDataset(datasets[split])
     device = torch.device('cuda:%d' % gpu)
     print('Encoding images using gpu {}...'.format(gpu))
@@ -73,7 +76,7 @@ def encode_patches(raw_dir: str,
 
     for data_name, dataset in datasets.items():
         network_cls = getattr(resnet, 'EncodeProject')
-        model = network_cls(arch=network, num_inputs=len(channels), width=network_width)
+        model = network_cls(arch=network, num_inputs=n_chan, width=network_width)
         model = model.to(device)
         # print(model)
         model.load_state_dict(torch.load(os.path.join(model_dir, 'model.pt'), map_location=device))
@@ -98,20 +101,13 @@ def encode_patches(raw_dir: str,
         with open(os.path.join(output_dir, output_fname), 'wb') as f:
             np.save(f, dats)
 
-def main(method_, raw_dir_, supp_dir_, config_):
-    method = method_
-    inputs = raw_dir_
-    outputs = supp_dir_
-    gpu_ids = config_.inference.gpu_ids
-    if method == 'pool_datasets':
-        pool_datasets(config_)
-    if config_.inference.fov:
-        sites = config_.inference.fov
-    else:
-        # get all "XX-SITE_#" identifiers in raw data directory
-        sites = get_im_sites(inputs)
-    if method == 'encode':
-        encode_patches(inputs, outputs, sites, config_, gpu=gpu_ids)
+def main(raw_dir, config_):
+    logger = make_logger(
+        log_dir=raw_dir,
+        log_level=20,
+    )
+    gpu_id = config_.inference.gpu_id
+    encode_patches(raw_dir, config_, gpu=gpu_id)
 
 def parse_args():
     """
@@ -121,14 +117,6 @@ def parse_args():
     """
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        '-m', '--method',
-        type=str,
-        required=False,
-        choices=['encode', 'pool_datasets'],
-        default='encode',
-        help="Method: one of 'encode' or 'pool_datasets'",
-    )
     parser.add_argument(
         '-c', '--config',
         type=str,
@@ -147,9 +135,9 @@ if __name__ == '__main__':
     else:
         weights = config.inference.weights
     # batch run
-    for (raw_dir, supp_dir) in zip(config.inference.raw_dirs, config.inference.supp_dirs):
+    for raw_dir in config.inference.raw_dirs:
         for weight in weights:
             config.inference.weights = weight
-            main(arguments.method, raw_dir, supp_dir, config)
+            main(raw_dir, config)
 
 
