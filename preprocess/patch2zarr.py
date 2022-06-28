@@ -135,11 +135,10 @@ def pool_datasets(config):
     if type(splits) is list:
         splits = tuple(splits)
     raw_dirs = config.data_pooling.raw_dirs
-    supp_dirs = config.data_pooling.supp_dirs
     dst_dir = config.data_pooling.dst_dir
     datasets = []
     df_meta_all = []
-    for raw_dir, supp_dir in zip(raw_dirs, supp_dirs):
+    for raw_dir in raw_dirs:
         patch_fname = os.path.join(raw_dir, 'cell_patches_all.zarr')
         meta_fname = os.path.join(raw_dir, 'patch_meta_all.csv')
         df_meta = pd.read_csv(meta_fname, index_col=0, converters={

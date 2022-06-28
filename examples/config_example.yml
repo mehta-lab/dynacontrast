@@ -1,118 +1,59 @@
 preprocess:
   raw_dirs: [
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0001-1',  
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0002-1',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0003-1',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0004-1',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0006-1',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0007-1',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0008-1',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0009-1',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0015-1',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0016-1',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0017-1',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0018-1',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0020-1',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0021-1',          
-            ]
+          '/gpfs/CompMicro/projects/dynacontrast/examples/TICM0001-1',
+          '/gpfs/CompMicro/projects/dynacontrast/examples/TICM0002-1',
+            ] # (list) directories for raw images
 
   supp_dirs: [
-           '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0001-1_patch',
-           '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0002-1_patch',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0003-1_patch',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0004-1_patch',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0006-1_patch',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0007-1_patch',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0008-1_patch',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0009-1_patch',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0015-1_patch',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0016-1_patch',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0017-1_patch',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0018-1_patch',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0020-1_patch',
-#          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0021-1_patch',          
-             ]
-  channels: [0,1]
-  fov: null
-  num_workers: 20
-  crop_size: 200
-  patch_size: 100
-  save_fig: False
-  skip_boundary: True
-  
-#  min_length: 2
-#  track_dim: 'slice'
+           '/gpfs/CompMicro/projects/dynacontrast/examples/TICM0001-1_patch',
+           '/gpfs/CompMicro/projects/dynacontrast/examples/TICM0002-1_patch',
+             ] # (list) directories to be created to store intermediate files
+  channels: [0, 1] # (list of int) channel indices to preprocess. All available channels will be preprocessed if "null" is specified.
+  positions: null # (null or list of int) list of position indices to preprocess. All available positions will be preprocessed if "null" is specified.
+  num_workers: 20 # (int) number of workers for multi-processing
+  crop_size: 200  # (int) patch size to crop from the raw images
+  patch_size: 100 # (int) output patch size. If different from "crop_size" then the patches will be resized.
+  save_fig: False # (bool) save visualization of preprocessed images if True
+  skip_boundary: True # (bool) skip cells whose distances to the image borders are less than 0.5 *  crop_size
+
+#  splits: [ 'all' ] # (list of str) if ['all'] then output is not split; if ['train', 'val'] then output is split into training and validation set
+#  split_cols: [ 'gene' ] # (list of str) Column(s) in the metadata to split the data on. Patches with the same labels won't exist in different splits
+#  split_ratio: 0.15 # (float) ratio of validation split. Only has effects when "splits" is ['train', 'val'].
+
+#  track_dim: 'slice' # (str) dimension over which the cell will be tracked ("time" or "slice").
+  #  min_length: 2 # (int) minimum length of the trajectories. Trajectories with lengths less than the specified value will be ignored
   
 
 data_pooling:
   raw_dirs: [
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0001-1',  
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0002-1',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0003-1',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0004-1',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0006-1',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0007-1',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0008-1',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0009-1',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0015-1',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0016-1',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0017-1',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0018-1',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0020-1',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0021-1',          
-            ]
-
-  supp_dirs: [
-           '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0001-1_patch',
-           '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0002-1_patch',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0003-1_patch',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0004-1_patch',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0006-1_patch',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0007-1_patch',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0008-1_patch',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0009-1_patch',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0015-1_patch',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0016-1_patch',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0017-1_patch',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0018-1_patch',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0020-1_patch',
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TICM0021-1_patch',          
-             ]
-  dst_dir:  '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool'
-  splits: ['train', 'val']
-  split_cols: ['gene']
-  split_ratio: 0.15
+          '/gpfs/CompMicro/projects/dynacontrast/examples/TICM0001-1',
+          '/gpfs/CompMicro/projects/dynacontrast/examples/TICM0002-1',
+            ] # (list) input directories to pool
+  dst_dir:  '/gpfs/CompMicro/projects/dynacontrast/examples/TIC_pool'  # (str) destination directory to save pooled dataset
+#  splits: ['train', 'val']
+  splits: ['all'] # (list of str) if ['all'] then output is not split; if ['train', 'val'] then output is split into training and validation set
+  split_cols: ['gene'] # (list of str) Column(s) in the metadata to split the data on. Patches with the same labels won't exist in different splits
+  split_ratio: 0.15 # (float) ratio of validation split. Only has effects when "splits" is ['train', 'val'].
 
 
 inference:
   raw_dirs: [  
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool' 
-            ]
-
-  supp_dirs: [
-          '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool'
-             ]
+          '/gpfs/CompMicro/projects/dynacontrast/examples/TIC_pool'
+            ] # (list) input directories for encoding
 
   weights: [
-#            '/gpfs/CompMicro/projects/dynacontrast/opencell/2021-7-15_good-fovs/models/rot_crop_jit_ntxent_0.5',
-#            '/gpfs/CompMicro/projects/dynacontrast/opencell/2021-7-15_good-fovs/models/rot_crop_jit_ntxent_0.1',
-#            '/gpfs/CompMicro/projects/dynacontrast/opencell/2021-7-15_good-fovs/models/rot_crop_jit_ntxent_2',
-#            '/gpfs/CompMicro/projects/dynacontrast/opencell/2021-7-15_good-fovs/models/rot_crop_jit_triplet',
-#            '/gpfs/CompMicro/projects/dynacontrast/opencell/2021-7-15_good-fovs/models/rot_crop_jit_ntxent_2_label_protein',
-            '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool/models/tic_ntxent_2_label_gene+expid+condi',
-            '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool/models/tic_ntxent_2'
-            ]  # pytorch weight files
-
-  network: 'ResNet50'
-  network_width: 1
-  projection: False
-  gpu_ids: 2  # list of GPUs to run inference on.
-  fov: False
-  channels: [0,1]
-  normalization: patch
-  splits: ['all']
-  batch_size: 1024
-  num_workers: 24
+            '/gpfs/CompMicro/projects/dynacontrast/examples/TIC_pool/models/tic_ntxent_2_label_gene+expid+condi',
+#            '/gpfs/CompMicro/projects/dynacontrast/examples/TIC_pool/models/tic_ntxent_2'
+            ]  # (list) directories for model weight files (pytorch checkpoint)
+  network: 'ResNet50' # (str) network architecture. Only ResNets are supported.
+  network_width: 1  c
+  projection: False # (bool) using projection head (True) or not (False)
+  gpu_id: 2  # (int) GPU ID to run inference on
+  n_channels: 2  # (int) number of input channels
+  normalization: patch  # (str) normalize on the patch level ("patch") or dataset level ("dataset")
+  splits: ['all'] # (list of str) split to run inference on
+  batch_size: 1024 # (int) batch size for pytorch dataloader
+  num_workers: 24 # (int) number of workers for pytorch dataloader
 
 dim_reduction:
   input_dirs:
@@ -124,46 +65,38 @@ dim_reduction:
 
 
 training:
-  raw_dir: '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool' 
-  weights_dir: '/gpfs/CompMicro/projects/dynacontrast/tic/TIC_pool/models'
+  raw_dir: '/gpfs/CompMicro/projects/dynacontrast/examples/TIC_pool'  # (str) input directory for training data
+  weights_dir: '/gpfs/CompMicro/projects/dynacontrast/examples/TIC_pool/models'  # (str) directory to create sub-directory for saving model related files
   # model hyperparameters
-  network: 'ResNet50'
-  network_width: 1
-  num_inputs: 2
-  margin: 1
-
-  # data
-  channels: [0,1]
-  channel_mean: null
-  channel_std: null
+  network: 'ResNet50'  # (str) network architecture. Only ResNets are supported.
+  network_width: 1  # (int) folds of the number of filters. 2 means 2X filters
+  num_inputs: 2  # (int) number of input channels
+  margin: 1  # (int) margin for triplet loss. No effects if "loss" is "ntxent"
 
   # training parameters
 
-  n_epochs: 5000
-  learn_rate: 0.0001
-  batch_size: 1280
-  shuffle_data: False
-  transform: True
-  patience: 100
-  n_pos_samples: 2
-  num_workers: 24
-  start_model_path: null
-  use_mask: False
-#  start_model_path: '/CompMicro/projects/virtualstaining/kidneyslice/2019_02_15_kidney_slice/dnm_train/CM+kidney_ResNet101_mrg1_npos4_bh512_alltriloss/model.pt'
-  retrain: True
-  start_epoch: 0
+  n_epochs: 5 # (int) number of epochs to train for
+  learn_rate: 0.0001 # (float) learning rate for training
+  batch_size: 64  # (int) batch size for pytorch dataloader
+  patience: 100  # (int) patience for early stopping
+  n_pos_samples: 2  # (int) number of samples in every positive group (SimCLR uses 2)
+  num_workers: 24 # (int) number of workers for pytorch dataloader
+  start_model_path: null # (str) starting model path. If null then model is trained from scratch
+  retrain: True # (bool) retrain the model even if the checkpoint file already exists, otherwise loads the checkpoint and continue training
+  start_epoch: 0 # (int) starting epoch number for tensorboard logging
 #  earlystop_metric: positive_triplet
-  earlystop_metric: total_loss # 'total_loss' or 'positive_triplet' for triplet loss 
-  model_name: 'tic_ntxent_2_label_gene+expid+condi'
-  normalization: patch
-#  loss: triplet # triplet or ntxent
-  loss: ntxent # triplet or ntxent 
-  temperature: 2
-  label_cols: ['gene', 'experiment ID', 'condition']
-  augmentations:
-    rotate_range: 180
-    intensity_jitter: [0.5, 0.5]
-  gpu_id: 2
+  earlystop_metric: total_loss # metric to monitor for early stopping. "total_loss" for "ntxent" loss or "positive_triplet" for "triplet" loss
+  model_name: 'tic_ntxent_2_label_gene+expid+condi' # (str) Model name. directory under "weights_dir" to save model related files
+  normalization: patch # (str) normalize on the patch level ("patch") or dataset level ("dataset")
+  loss: ntxent # loss funtion. "triplet" or "ntxent" loss
+  temperature: 2 # temperature parameter for "ntxent" loss
+  label_cols: ['gene', 'experiment ID', 'condition']  # (list of str) Column(s) in the metadata for creating labels for training. Specify "null" to label each patch as different
+  augmentations: # augmentation paramter
+    rotate_range: 180 # (float) random rotation range [-x, x] in degrees. 0 means no rotation
+    intensity_jitter: [0.5, 0.5] # (list of float) random intensity jitter range for the mean (brightness) and standard deviation (contrast) of image intensity. 0 means no jitter
+    zoom_range: [1, 1] # (list of float) random zoom range. 1 means no zoom
+    crop_ratio: [0.6, 1] # (list of float) random crop ratio range. 1 means crop size is the same as the patch size (no cropping)
+  gpu_id: 2  # (int) GPU ID to run inference on
 
 
   
