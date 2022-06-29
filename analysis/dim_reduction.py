@@ -121,7 +121,7 @@ def umap_transform(input_dir, output_dir, weights_dir, prefix, suffix='_after'):
             pickle.dump(dats_, f, protocol=4)
 
 
-def fit_umap(train_data, embed_dir, labels, label_col, fraction=0.1, seed=0,
+def fit_umap(train_data, embed_dir, labels, label_cols, fraction=0.1, seed=0,
              n_nbrs=(15,), a_s=(1.58,), b_s=(0.9,), dist_metric='cosine', n_runs=1):
     """Fit UMAP model to latent vectors and save the reduced vectors (embeddings), output UMAP plot
     Args:
@@ -178,11 +178,11 @@ def fit_umap(train_data, embed_dir, labels, label_col, fraction=0.1, seed=0,
                 print(labels_sub.shape)
                 title = 'n_neighbors={}'.format(n_nbr)
                 if axis_count == (len(ax) - 1):
-                    plot_umap(ax[axis_count], embedding_sub, labels_sub, title=title, leg_title=label_col, zoom_cutoff=0, plot_other=True)
+                    plot_umap(ax[axis_count], embedding_sub, labels_sub, title=title, leg_title=label_cols, zoom_cutoff=0, plot_other=True)
                 else:
                     plot_umap(ax[axis_count], embedding_sub, labels_sub, title=title, zoom_cutoff=0, plot_other=True)
                 axis_count += 1
-                fig.savefig(os.path.join(embed_dir, 'UMAP_{}_frac{}_{}_{}runs.png'.format('_'.join(label_col).replace(' ', '_'), fraction, dist_metric, n_runs)),
+                fig.savefig(os.path.join(embed_dir, 'UMAP_{}_frac{}_{}_{}runs.png'.format('_'.join(label_cols).replace(' ', '_'), fraction, dist_metric, n_runs)),
                             dpi=300, bbox_inches='tight')
     plt.close(fig)
 
@@ -191,7 +191,7 @@ def dim_reduction(input_dirs,
                   weights_dir,
                   method,
                   fit_model,
-                  label_col=None,
+                  label_cols=None,
                   split='test',
                   fraction=0.1):
     """
@@ -246,12 +246,12 @@ def dim_reduction(input_dirs,
             vector_list.append(vec.reshape(vec.shape[0], -1))
 
         vectors = np.concatenate(vector_list, axis=0)
-        if len(label_col) == 1:
-            labels = df_meta_all[label_col[0]].to_numpy()
+        if len(label_cols) == 1:
+            labels = df_meta_all[label_cols[0]].to_numpy()
         else:
-            labels = df_meta_all[label_col].apply(lambda row: '_'.join(row.values.astype(str)), axis=1).to_numpy()
+            labels = df_meta_all[label_cols].apply(lambda row: '_'.join(row.values.astype(str)), axis=1).to_numpy()
         print(labels.shape)
-        _ = fit_func(vectors, input_dir, labels=labels, label_col=label_col, fraction=fraction)
+        _ = fit_func(vectors, input_dir, labels=labels, label_cols=label_cols, fraction=fraction)
         # UMAP model from umap 0.5.0 can't be pickled with protocol=4.
         # Transform from saved models is currently not supported
         if method == 'umap':

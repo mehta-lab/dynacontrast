@@ -14,7 +14,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.decomposition import PCA
 from matplotlib import pyplot as plt
 from plot.plotting import plot_umap, im_adjust
-from plot.clustering_workflows import ClusteringWorkflow
+from analysis.clustering_workflows import ClusteringWorkflow
 
 
 # from torch.utils.data import DataLoader
