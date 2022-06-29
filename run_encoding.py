@@ -8,8 +8,6 @@ from tqdm import tqdm
 
 from dataset.dataset import ImageDataset
 from train import resnet as resnet
-from preprocess.patch2zarr import pool_datasets
-from utils.patch_utils import get_im_sites
 import argparse
 from utils.config_reader import YamlReader
 from utils.logger import make_logger
@@ -36,7 +34,7 @@ def encode_patches(raw_dir: str,
 
     """
     log = logging.getLogger('dynacontrast.log')
-    model_dir = config_.inference.weights
+    model_dir = config_.inference.weights_dirs
     n_chan = config_.inference.n_channels
     network = config_.inference.network
     network_width = config_.inference.network_width
@@ -130,14 +128,14 @@ if __name__ == '__main__':
     arguments = parse_args()
     config = YamlReader()
     config.read_config(arguments.config)
-    if type(config.inference.weights) is not list:
-        weights = [config.inference.weights]
+    if type(config.inference.weights_dirs) is not list:
+        weights = [config.inference.weights_dirs]
     else:
-        weights = config.inference.weights
+        weights = config.inference.weights_dirs
     # batch run
     for raw_dir in config.inference.raw_dirs:
         for weight in weights:
-            config.inference.weights = weight
+            config.inference.weights_dirs = weight
             main(raw_dir, config)
 
 

@@ -186,7 +186,7 @@ def main(config_):
 
     # Settings
     raw_dir = config.training.raw_dir
-    train_dir = config.training.weights_dir
+    train_dir = config.training.model_dir
     # supp_dirs = config.training.supp_dirs
     os.makedirs(train_dir, exist_ok=True)
 

@@ -78,7 +78,7 @@ Train a model to learn single cell representation of the patches:
 
 This will save the model weights as pytorch checkpoint file “model.pt” in “weights_dir” under “model_name” specified in training config. The module also writes tensorboard log file in the same directory that can be visualized using tensorboard.
 
-# Encoding
+# Encoding (inference)
 Encode image patches into the vectors using the trained model:
 
 	python run_encoding.py --config <path-to-your-config-yaml>
@@ -89,8 +89,18 @@ For example, to run encoding using the example config:
 
     python run_encoding.py --config examples/config_example.yml
 
-# Dimensionality reduction
+•	The module requires “cell_patches_<split>_.zarr” in the “raw_dirs” and model weights in “weights_dirs”.
+•	The module outputs the patch embeddings as `<split>_embeddings.npy` under raw_dir/model_name
+•	Encoding CLI supports batch processing. Multiple inputs & models can be specified and encoding will run on each input & model combination. If “raw_dirs” has m inputs and “weights_dirs” has n inputs, then total m x n embedding files will be generated.  
 
-    
+
+# Dimensionality reduction
+To reduce the dimension of embeddings for visualization or downstream analysis:
+
+    python run_dim_reduction.py --config <path-to-your-config-yaml>
+
+•	The module requires patch embeddings  `<split>_embeddings.npy` under raw_dir/model_name to run.
+•	The module outputs reduced embeddings as `umap_<parameters>.npy` under raw_dir/model_name. 
+•	The CLI supports batch processing.  Multiple inputs & models can be specified, and dimensionality reduction will run on each input & model combination. 
 
 

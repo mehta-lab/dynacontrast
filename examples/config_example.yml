@@ -46,7 +46,7 @@ inference:
 #            '/gpfs/CompMicro/projects/dynacontrast/examples/TIC_pool/models/tic_ntxent_2'
             ]  # (list) directories for model weight files (pytorch checkpoint)
   network: 'ResNet50' # (str) network architecture. Only ResNets are supported.
-  network_width: 1  c
+  network_width: 1  # (int) folds of the number of filters. 2 means 2X filters
   projection: False # (bool) using projection head (True) or not (False)
   gpu_id: 2  # (int) GPU ID to run inference on
   n_channels: 2  # (int) number of input channels
@@ -55,18 +55,9 @@ inference:
   batch_size: 1024 # (int) batch size for pytorch dataloader
   num_workers: 24 # (int) number of workers for pytorch dataloader
 
-dim_reduction:
-  input_dirs:
-  output_dirs:
-  file_name_prefixes:
-  weights_dirs:
-  fit_model:
-  conditions:
-
-
 training:
   raw_dir: '/gpfs/CompMicro/projects/dynacontrast/examples/TIC_pool'  # (str) input directory for training data
-  weights_dir: '/gpfs/CompMicro/projects/dynacontrast/examples/TIC_pool/models'  # (str) directory to create sub-directory for saving model related files
+  model_dir: '/gpfs/CompMicro/projects/dynacontrast/examples/TIC_pool/models'  # (str) directory to create sub-directory for saving model related files
   # model hyperparameters
   network: 'ResNet50'  # (str) network architecture. Only ResNets are supported.
   network_width: 1  # (int) folds of the number of filters. 2 means 2X filters
@@ -97,6 +88,19 @@ training:
     zoom_range: [1, 1] # (list of float) random zoom range. 1 means no zoom
     crop_ratio: [0.6, 1] # (list of float) random crop ratio range. 1 means crop size is the same as the patch size (no cropping)
   gpu_id: 2  # (int) GPU ID to run inference on
+
+dim_reduction:
+  raw_dirs: [
+            '/gpfs/CompMicro/projects/dynacontrast/examples/TIC_pool'
+            ] # (list of str) input directories containing embedding directories
+
+  weights_dirs: [
+                '/gpfs/CompMicro/projects/dynacontrast/examples/TIC_pool/models/tic_ntxent_2_label_gene+expid+condi',
+                ] # (list of str) directories for model weight files (pytorch checkpoint)
+  label_cols: ['condition'] # (list of str) Column(s) in the metadata to colorcode UMAP by
+  split: 'all' # (str) split to run dimensionality reduction on
+  fraction: 1  # (float) Fraction to subsample the data to run dimensionality reduction. Range (0, 1]
+
 
 
   
