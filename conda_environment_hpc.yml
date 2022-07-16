@@ -1,0 +1,20 @@
+name: dynacontrast
+channels:
+  - anaconda
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.7
+  - dask
+  - matplotlib
+  - numpy
+  - natsort
+  - opencv
+  - pandas
+  - PyYAML
+  - scikit-image
+  - scikit-learn
+  - scipy
+  - tqdm
+  - zarr

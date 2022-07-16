@@ -48,6 +48,20 @@ To start an interactive container from the image:
 docker run -it -m 128G --name [name of your container] -v [folder on the host]:[folder inside docker] -p [port on the host]:[port inside docker] --env ACTIVATE=tensorflow --env LICENCE=yes dynacontrast:<version number> bash
 ```
 
+### Setting up conda env on HPC (A30 & A100 GPUs)
+Create a `conda` environment from the yaml file and activate it:
+```
+conda env create --file=conda_environment_hpc.yml
+conda activate dynacontrast
+```
+Install required packages using pip
+```
+pip install torch==1.7.1+cu110 torchvision==0.8.2+cu110 torchaudio==0.7.2 -f https://download.pytorch.org/whl/torch_stable.html
+pip install tensorboard==1.15.0
+pip install protobuf==3.20.1  #downgrade protobuf is required to work
+pip install umap-learn
+```
+
 ## Usage
 You can find the example config file in `examples` directory.
 
