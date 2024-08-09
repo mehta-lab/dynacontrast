@@ -51,8 +51,9 @@ docker run -it -m 128G --name [name of your container] -v [folder on the host]:[
 ### Setting up conda env on HPC (A30 & A100 GPUs)
 Create a `conda` environment from the yaml file and activate it:
 ```
-conda env create --file=conda_environment_hpc.yml
-conda activate dynacontrast
+conda env create -p /hpc/mydata/$USER/envs/dynacontrast python=3.7 # Needed for dependencies to work.
+conda activate /hpc/mydata/$USER/envs/dynacontrast
+conda install dask matplotlib numpy natsort opencv pandas PyYAML scikit-image scikit-learn scipy tqdm zarr black
 ```
 Install required packages using pip
 ```
