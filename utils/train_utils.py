@@ -9,7 +9,9 @@ class EarlyStopping:
     https://github.com/Bjarten/early-stopping-pytorch/blob/master/pytorchtools.py
     """
 
-    def __init__(self, patience=7, verbose=False, delta=0, path='checkpoint.pt', trace_func=print):
+    def __init__(
+        self, patience=7, verbose=False, delta=0, path="checkpoint.pt", trace_func=print
+    ):
         """
         Args:
             patience (int): How long to wait after last time validation loss improved.
@@ -42,7 +44,9 @@ class EarlyStopping:
             self.save_checkpoint(val_loss, model)
         elif score < self.best_score + self.delta:
             self.counter += 1
-            self.trace_func(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+            self.trace_func(
+                f"EarlyStopping counter: {self.counter} out of {self.patience}"
+            )
             if self.counter >= self.patience:
                 self.early_stop = True
         else:
@@ -51,20 +55,24 @@ class EarlyStopping:
             self.counter = 0
 
     def save_checkpoint(self, val_loss, model):
-        '''Saves model when validation loss decrease.'''
+        """Saves model when validation loss decrease."""
         if self.verbose:
             self.trace_func(
-                f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+                f"Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ..."
+            )
         torch.save(model.state_dict(), self.path)
         self.val_loss_min = val_loss
 
+
 class DataLoader(DataLoader):
     """Override Pytorch 1.2 Dataloader's behavior of no __len__ for IterableDataset"""
+
     def __init__(self, dataset, **kwargs):
         super(DataLoader, self).__init__(dataset, **kwargs)
 
     def __len__(self):
         return np.ceil(len(self.dataset) / self.batch_size).astype(np.int64)
+
 
 def zscore(input_image, channel_mean=None, channel_std=None):
     """
@@ -81,14 +89,14 @@ def zscore(input_image, channel_mean=None, channel_std=None):
     for c in range(len(channel_mean)):
         mean = channel_mean[c]
         std = channel_std[c]
-        channel_slice = (input_image[:, c, ...] - mean) / \
-                        (std + np.finfo(float).eps)
+        channel_slice = (input_image[:, c, ...] - mean) / (std + np.finfo(float).eps)
         # channel_slice = t.clamp(channel_slice, -1, 1)
         channel_slices.append(channel_slice)
     norm_img = np.stack(channel_slices, 1)
-    print('channel_mean:', channel_mean)
-    print('channel_std:', channel_std)
+    print("channel_mean:", channel_mean)
+    print("channel_std:", channel_std)
     return norm_img
+
 
 def zscore_patch(imgs):
     """
@@ -103,8 +111,7 @@ def zscore_patch(imgs):
     for img_chan, channel_mean, channel_std in zip(imgs, means, stds):
         channel_slices = []
         for img, mean, std in zip(img_chan, channel_mean, channel_std):
-            channel_slice = (img - mean) / \
-                            (std + np.finfo(float).eps)
+            channel_slice = (img - mean) / (std + np.finfo(float).eps)
             # channel_slice = t.clamp(channel_slice, -1, 1)
             channel_slices.append(channel_slice)
         channel_slices = np.stack(channel_slices)
@@ -141,8 +148,8 @@ def train_val_split(dataset, labels, val_split_ratio=0.15, seed=0):
     # randomly choose the split start
     np.random.seed(seed)
     split_start = np.random.randint(0, n_samples - split)
-    val_ids = sample_ids[split_start: split_start + split]
-    train_ids = sample_ids[:split_start] + sample_ids[split_start + split:]
+    val_ids = sample_ids[split_start : split_start + split]
+    train_ids = sample_ids[:split_start] + sample_ids[split_start + split :]
     train_set = dataset[train_ids]
     train_labels = labels[train_ids]
     val_set = dataset[val_ids]
@@ -150,7 +157,14 @@ def train_val_split(dataset, labels, val_split_ratio=0.15, seed=0):
     return train_set, train_labels, val_set, val_labels
 
 
-def split_data(dataset, df_meta, split_cols=None, splits = ('train', 'val'), val_split_ratio=0.15, seed=0):
+def split_data(
+    dataset,
+    df_meta,
+    split_cols=None,
+    splits=("train", "val"),
+    val_split_ratio=0.15,
+    seed=0,
+):
     """Split the dataset into train and validation sets
 
     Args:
@@ -165,19 +179,23 @@ def split_data(dataset, df_meta, split_cols=None, splits = ('train', 'val'), val
         val_labels (list or np array): validation labels corresponding to inputs in train set
 
     """
-    if splits == ('all',):
+    if splits == ("all",):
         split_ids = [np.arange(len(dataset))]
-    elif splits == ('train', 'val'):
+    elif splits == ("train", "val"):
         assert 0 < val_split_ratio < 1
         if split_cols is None:
-            split_cols = ['data_dir', 'FOV']
+            split_cols = ["data_dir", "FOV"]
         elif type(split_cols) is str:
             split_cols = [split_cols]
-        split_key = df_meta[split_cols].apply(lambda row: '_'.join(row.values.astype(str)), axis=1)
-        gss = GroupShuffleSplit(test_size=val_split_ratio, n_splits=2, random_state=seed)
+        split_key = df_meta[split_cols].apply(
+            lambda row: "_".join(row.values.astype(str)), axis=1
+        )
+        gss = GroupShuffleSplit(
+            test_size=val_split_ratio, n_splits=2, random_state=seed
+        )
         split_ids, _ = gss.split(df_meta, groups=split_key)
     else:
-        raise NotImplementedError('Unsupported split type {}'.format(splits))
+        raise NotImplementedError("Unsupported split type {}".format(splits))
     datasets = {split: dataset[ids] for split, ids in zip(splits, split_ids)}
     df_metas = {split: df_meta.iloc[ids] for split, ids in zip(splits, split_ids)}
 
