@@ -88,6 +88,8 @@ class EncodeProject(nn.Module):
                  loss=AllTripletMiner(margin=1),
                  num_inputs=2,
                  cifar_head=False,
+                 verbose = True,
+                 viewmode = False,
                  device='cuda:0'):
 
         super().__init__()
@@ -109,7 +111,7 @@ class EncodeProject(nn.Module):
 
         num_params = sum(p.numel() for p in self.convnet.parameters() if p.requires_grad)
 
-        print(f'======> Encoder: output dim {self.encoder_dim} | {num_params/1e6:.3f}M parameters')
+        print(f'======> Encoder: output dim {self.encoder_dim} | {num_params/1e6:.3f}M parameters') if verbose else None
 
         self.proj_dim = 128
         projection_layers = [
@@ -123,6 +125,7 @@ class EncodeProject(nn.Module):
         self.projection = nn.Sequential(OrderedDict(projection_layers))
         self.loss = loss
         self.device = device
+        self.viewmode = viewmode
 
     def encode(self, x, out='z'):
         h = self.convnet(x)
@@ -137,7 +140,7 @@ class EncodeProject(nn.Module):
 
     def forward(self, x, labels=None, time_matching_mat=None, batch_mask=None):
         z = self.encode(x)
-        loss, f_pos_tri = self.loss(labels, z)
+        loss, f_pos_tri = self.loss(labels, z) if not self.viewmode else (0, 0)
         loss_dict = {'total_loss': loss, 'positive_triplet': f_pos_tri}
         return z, loss_dict
 

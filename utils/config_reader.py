@@ -4,126 +4,127 @@ import logging
 # to add a new configuration parameter, simply add the string to the appropriate set here
 
 PREPROCESS = {
-    'image_dirs',
-    'target_dirs',
-    'channels',
-    'fov',
-    'pos_dir',
-    'multipage',
-    'z_slice',
+    "image_dirs",
+    "target_dirs",
+    "channels",
+    "fov",
+    "pos_dir",
+    "multipage",
+    "z_slice",
 }
 
 PATCH = {
-    'raw_dirs',
-    'supp_dirs',
-    'channels',
-    'fov',
-    'num_cpus',
-    'crop_size',
-    'save_fig',
-    'reload',
-    'skip_boundary',
-    'min_length',
-    'track_dim'
+    "raw_dirs",
+    "supp_dirs",
+    "channels",
+    "fov",
+    "num_cpus",
+    "crop_size",
+    "save_fig",
+    "reload",
+    "skip_boundary",
+    "min_length",
+    "track_dim",
 }
 
 INFERENCE = {
-    'raw_dirs',
-    'supp_dirs',
-    'val_dirs',
-    'network',
-    'network_width',
-    'weights',
-    'save_output',
-    'gpu_ids',
-    'fov',
-    'channels',
-    'channel_mean',
-    'channel_std',
-    'num_classes',
-    'crop_size',
-    'batch_size',
-    'num_pred_rnd',
-    'seg_val_cat',
-    'num_workers',
-    'normalization',
-    'model',
+    "raw_dirs",
+    "supp_dirs",
+    "val_dirs",
+    "network",
+    "network_width",
+    "weights",
+    "save_output",
+    "gpu_ids",
+    "fov",
+    "channels",
+    "channel_mean",
+    "channel_std",
+    "num_classes",
+    "crop_size",
+    "batch_size",
+    "num_pred_rnd",
+    "seg_val_cat",
+    "num_workers",
+    "normalization",
+    "model",
 }
 
 SEGMENTATION = {
-    'raw_dirs',
-    'supp_dirs',
-    'val_dirs',
-    'model',
-    'weights',
-    'save_output',
-    'gpu_ids',
-    'num_workers',
-    'fov',
-    'channels',
-    'channel_mean',
-    'channel_std',
-    'num_classes',
-    'crop_size',
-    'batch_size',
-    'num_pred_rnd',
-    'seg_val_cat'
+    "raw_dirs",
+    "supp_dirs",
+    "val_dirs",
+    "model",
+    "weights",
+    "save_output",
+    "gpu_ids",
+    "num_workers",
+    "fov",
+    "channels",
+    "channel_mean",
+    "channel_std",
+    "num_classes",
+    "crop_size",
+    "batch_size",
+    "num_pred_rnd",
+    "seg_val_cat",
 }
 
 DIM_REDUCTION = {
-    'input_dirs',
-    'output_dirs',
-    'file_name_prefixes',
-    'weights_dirs',
-    'fit_model',
-    'conditions'
+    "input_dirs",
+    "output_dirs",
+    "file_name_prefixes",
+    "weights_dirs",
+    "fit_model",
+    "conditions",
 }
 
 TRAINING = {
-    'raw_dirs',
-    'supp_dirs',
-    'weights_dirs',
-    'network',
-    'network_width',
-    'num_inputs',
-    'num_hiddens',
-    'num_residual_hiddens',
-    'num_residual_layers',
-    'num_embeddings',
-    'weight_matching',
-    'margin',
-    'w_a',
-    'w_t',
-    'w_n',
-    'channels',
-    'channel_mean',
-    'channel_std',
-    'commitment_cost',
-    'n_epochs',
-    'learn_rate',
-    'batch_size',
-    'val_split_ratio',
-    'shuffle_data',
-    'transform',
-    'patience',
-    'n_pos_samples',
-    'num_workers',
-    'gpu_id',
-    'start_model_path',
-    'retrain',
-    'start_epoch',
-    'earlystop_metric',
-    'model_name',
-    'use_mask',
-    'normalization',
-    'loss',
-    'temperature',
-    'augmentations'
+    "raw_dirs",
+    "supp_dirs",
+    "weights_dirs",
+    "network",
+    "network_width",
+    "num_inputs",
+    "num_hiddens",
+    "num_residual_hiddens",
+    "num_residual_layers",
+    "num_embeddings",
+    "weight_matching",
+    "margin",
+    "w_a",
+    "w_t",
+    "w_n",
+    "channels",
+    "channel_mean",
+    "channel_std",
+    "commitment_cost",
+    "n_epochs",
+    "learn_rate",
+    "batch_size",
+    "val_split_ratio",
+    "shuffle_data",
+    "transform",
+    "patience",
+    "n_pos_samples",
+    "num_workers",
+    "gpu_id",
+    "start_model_path",
+    "retrain",
+    "start_epoch",
+    "earlystop_metric",
+    "model_name",
+    "use_mask",
+    "normalization",
+    "loss",
+    "temperature",
+    "augmentations",
 }
 
 ##TODO: add checks for config fields
 class Object:
     pass
+
 
 class Struct(object):
     def __init__(self, data):
@@ -138,7 +139,6 @@ class Struct(object):
 
 
 class YamlReader(Struct):
-
     def __init__(self):
         self.config = None
 
@@ -152,7 +152,7 @@ class YamlReader(Struct):
         # self.training = Object()
 
     def read_config(self, yml_config):
-        with open(yml_config, 'r') as f:
+        with open(yml_config, "r") as f:
             self.config = yaml.load(f, Loader=yaml.FullLoader)
             super(YamlReader, self).__init__(self.config)
             # # self._parse_files()
@@ -209,7 +209,3 @@ class YamlReader(Struct):
     #
     #         else:
     #             log.warning(f"yaml TRAINING config field {key} is not recognized")
-
-
-
-
